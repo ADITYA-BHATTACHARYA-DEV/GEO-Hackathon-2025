@@ -1,0 +1,10 @@
+ollama
+chromadb
+langchain
+langchain_community
+llama-index-embeddings-ollama
+pyPDF
+streamlit
+streamlit_option_menu
+SpeechRecognition
+pyttsx3
