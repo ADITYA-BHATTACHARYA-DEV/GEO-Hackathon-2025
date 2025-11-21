@@ -90,63 +90,337 @@ def safe_multicell(pdf, w, h, text, max_len=400):
     except Exception:
         pdf.cell(w, h, safe_text(text, max_len=100), ln=True)
 
-def save_response_to_pdf(answer_text, source_docs, filename="output.pdf", user_query=None):
-    pdf = FPDF()
+
+import numpy as np
+from fpdf import FPDF
+from io import StringIO
+from datetime import datetime
+from pathlib import Path
+
+
+# Assume safe_text and safe_multicell are defined globally and handle text wrapping.
+from fpdf import FPDF
+from datetime import datetime
+from io import StringIO
+import pandas as pd
+import os
+
+def save_response_to_pdf(
+    answer_text,
+    source_docs,
+    filename="output.pdf",
+    user_query=None,
+    operating_point=None,      # dict
+    parameter_dict=None,       # dict
+    nodal_plot_path=None
+):
+    """
+    SPE-style PDF generator:
+      - Vertical SPE-style tables (Option A)
+      - Dark-gray header, light-gray body
+      - Nodal plot insertion
+      - Full Unicode-safe text handling
+      - Fixes FPDF crash: "'int' object has no attribute 'upper'"
+    """
+
+    # -----------------------------
+    # Imports
+    # -----------------------------
+    from fpdf import FPDF
+    import os
+    from datetime import datetime
+
+    # -----------------------------
+    # Safe text conversion (CRITICAL)
+    # -----------------------------
+    def s(x):
+        """Convert any object to safe string for FPDF."""
+        try:
+            if x is None:
+                return ""
+            return str(x)
+        except:
+            return ""
+
+    # -----------------------------
+    # Safe multicell wrapper
+    # -----------------------------
+    def _safe_multicell(pdf_obj, w, h, txt, max_len=3000):
+        txt = s(txt)
+        if len(txt) > max_len:
+            txt = txt[:max_len] + "..."
+        pdf_obj.multi_cell(w, h, txt)
+
+    # -----------------------------
+    # Custom PDF class
+    # -----------------------------
+    class _PEFPDF(FPDF):
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Arial", "I", 8)
+            self.set_text_color(120, 120, 120)
+            self.cell(0, 10, f"Page {self.page_no()}", align="C")
+
+    pdf = _PEFPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
 
-    # Timestamp + user query
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    header = f"Generated on: {timestamp}\n"
+    # -----------------------------
+    # SPE Colors
+    # -----------------------------
+    HEADER_GRAY = (80, 80, 80)      # dark gray header
+    BODY_GRAY = (235, 235, 235)     # light gray body
+    TEXT_BLACK = (0, 0, 0)
+
+    # -----------------------------
+    # Heading formatter
+    # -----------------------------
+    def draw_heading(title):
+        pdf.ln(6)
+        pdf.set_font("Arial", "B", 14)
+        pdf.set_text_color(20, 20, 20)
+        pdf.cell(0, 8, s(title), ln=True, align="L")
+        pdf.ln(2)
+        pdf.set_draw_color(150, 150, 150)
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.l_margin, pdf.get_y())
+        pdf.ln(4)
+
+    # -----------------------------
+    # SPE-style vertical table
+    # -----------------------------
+    def draw_spe_vertical_table(title, data_dict):
+        if not data_dict:
+            return
+
+        pdf.ln(3)
+
+        # ----------------- Header row -----------------
+        pdf.set_fill_color(*HEADER_GRAY)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(0, 8, s(title), ln=True, align="C", fill=True)
+
+        # ----------------- Body rows -----------------
+        pdf.set_fill_color(*BODY_GRAY)
+        pdf.set_text_color(*TEXT_BLACK)
+        pdf.set_font("Arial", "", 9)
+
+        col1_w = (pdf.w - pdf.l_margin - pdf.r_margin) * 0.40
+        col2_w = (pdf.w - pdf.l_margin - pdf.r_margin) * 0.60
+
+        for key, val in data_dict.items():
+            pdf.cell(col1_w, 7, s(key), border=1, fill=True)
+            pdf.cell(col2_w, 7, s(val), border=1, fill=True, ln=1)
+
+        pdf.ln(4)
+
+    # -----------------------------
+    # COVER PAGE
+    # -----------------------------
+    pdf.set_font("Arial", "B", 20)
+    pdf.set_text_color(10, 60, 150)
+    pdf.cell(0, 12, "Nodal Analysis - Engineering Report", ln=True)
+
+    pdf.ln(2)
+    pdf.set_font("Arial", "", 10)
+    pdf.set_text_color(*TEXT_BLACK)
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    pdf.cell(0, 6, s(f"Generated: {ts}"), ln=True)
+
     if user_query:
-        header += f"User Query: {user_query}\n"
-    safe_multicell(pdf, 0, 10, header, max_len=500)
-    pdf.ln(5)
+        _safe_multicell(pdf, 0, 6, f"Query: {user_query}")
 
-    # Answer section
-    safe_multicell(pdf, 0, 10, f"Answer:\n{answer_text}", max_len=1000)
+    pdf.ln(4)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.l_margin, pdf.get_y())
+    pdf.ln(8)
 
-    # Sources section
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Supporting Sources:", ln=True)
-    pdf.set_font("Arial", size=10)
+    # -----------------------------
+    # I. Summary
+    # -----------------------------
+    draw_heading("I. Summary of Solution")
+    pdf.set_font("Arial", "", 11)
+    _safe_multicell(pdf, 0, 5, answer_text)
+    pdf.ln(6)
+
+    # -----------------------------
+    # II. Operating Point (SPE table)
+    # -----------------------------
+    if operating_point:
+        draw_heading("II. Operating Point")
+        draw_spe_vertical_table("Operating Point", operating_point)
+
+    # -----------------------------
+    # III. Extracted Parameters (SPE table)
+    # -----------------------------
+    if parameter_dict:
+        draw_heading("III. Extracted Parameters")
+        draw_spe_vertical_table("Extracted Parameters", parameter_dict)
+
+    # -----------------------------
+    # IV. Insert Nodal Plot
+    # -----------------------------
+    if nodal_plot_path:
+        draw_heading("IV. Nodal Plot")
+        try:
+            if os.path.exists(nodal_plot_path):
+                max_w = pdf.w - pdf.l_margin - pdf.r_margin
+                pdf.image(nodal_plot_path, x=pdf.l_margin, w=max_w)
+                pdf.ln(6)
+            else:
+                pdf.set_text_color(180, 0, 0)
+                pdf.cell(0, 6, "Plot image not found.", ln=True)
+                pdf.set_text_color(*TEXT_BLACK)
+        except Exception as e:
+            pdf.set_text_color(180, 0, 0)
+            _safe_multicell(pdf, 0, 5, f"[Could not load plot: {e}]")
+            pdf.set_text_color(*TEXT_BLACK)
+
+    # -----------------------------
+    # V. Supporting Sources
+    # -----------------------------
+    draw_heading("V. Supporting Sources")
 
     for i, doc in enumerate(source_docs or [], start=1):
-        md = getattr(doc, "metadata", {}) or {}
-        safe_multicell(pdf, 0, 8, f"Source {i}: {md.get('source', 'unknown')}", max_len=300)
+        meta = getattr(doc, "metadata", {}) or {}
+
+        pdf.set_fill_color(220, 220, 220)
+        pdf.set_font("Arial", "B", 9)
+        pdf.set_text_color(*TEXT_BLACK)
+
+        header_text = f"Source {i}: {meta.get('source','N/A')} | Page: {meta.get('page','N/A')}"
+        pdf.cell(0, 7, s(header_text), ln=1, fill=True)
+
+        pdf.set_font("Arial", "", 8)
         preview = getattr(doc, "page_content", "")
-        safe_multicell(pdf, 0, 8, preview, max_len=400)
-        pdf.ln(5)
+        _safe_multicell(pdf, 0, 4, preview)
+        pdf.ln(2)
 
-        # Embed table if available
-        if md.get("table_csv"):
-            try:
-                import pandas as pd
-                from io import StringIO
-                df = pd.read_csv(StringIO(md["table_csv"]))
-                pdf.set_font("Arial", 'B', 10)
-                pdf.cell(0, 8, "Table preview:", ln=True)
-                pdf.set_font("Arial", size=8)
-                for _, row in df.head(5).iterrows():
-                    row_str = ", ".join(map(str, row.values))
-                    safe_multicell(pdf, 0, 6, row_str, max_len=200)
-                pdf.ln(3)
-            except Exception:
-                pass
-
-        # Embed image if available
-        if md.get("content_type") in {"image_meta", "image_ocr"}:
-            img_path = md.get("source")
-            if img_path and Path(img_path).exists():
-                try:
-                    pdf.image(img_path, w=80)
-                    pdf.ln(5)
-                except Exception:
-                    pass
+    # -----------------------------
+    # Save Output
+    # -----------------------------
+    out_dir = os.path.dirname(filename)
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir, exist_ok=True)
 
     pdf.output(filename)
+
     return filename
 
+
+
+
+# def save_response_to_pdf(answer_text, source_docs, filename="output.pdf", user_query=None):
+#     pdf = FPDF()
+#     pdf.add_page()
+#
+#     # Define Colors (RGB)
+#     COLOR_GRAY = (240, 240, 240)
+#     COLOR_YELLOW = (255, 255, 220)
+#     COLOR_BLACK = (0, 0, 0)
+#
+#     current_color = COLOR_YELLOW
+#
+#     # Helper function to render a block with a background color
+#     def render_colored_block(text, font_size, is_heading=False):
+#         nonlocal current_color
+#
+#         # Switch color for the next block
+#         current_color = COLOR_GRAY if current_color == COLOR_YELLOW else COLOR_YELLOW
+#         pdf.set_fill_color(*current_color)
+#
+#         # Calculate height required for the text block
+#         # Temporarily set font to calculate height (max width is 0, so it uses page width minus margins)
+#         pdf.set_font("Arial", 'B' if is_heading else '', font_size)
+#         text_height = pdf.get_string_height(0, text)
+#
+#         # Add padding (e.g., 2 units)
+#         block_height = text_height + 4
+#
+#         # Get current x and y positions
+#         x = pdf.get_x()
+#         y = pdf.get_y()
+#
+#         # Draw the background rectangle
+#         pdf.rect(pdf.l_margin, y, pdf.w - 2 * pdf.l_margin, block_height, 'F')
+#
+#         # Set text color to black
+#         pdf.set_text_color(*COLOR_BLACK)
+#
+#         # Render text inside the colored block
+#         pdf.set_y(y + 2)  # Start text slightly below the top of the block
+#         pdf.set_x(x)
+#         safe_multicell(pdf, 0, block_height - 4, text, max_len=2000)
+#
+#         # Move cursor below the block
+#         pdf.set_y(y + block_height)
+#         pdf.ln(2)
+#
+#     # --- Header (No background) ---
+#     pdf.set_text_color(*COLOR_BLACK)
+#     pdf.set_font("Arial", size=10)
+#     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#     header = f"Report Generated: {timestamp}\n"
+#     if user_query:
+#         header += f"Query Context: {user_query}\n"
+#     safe_multicell(pdf, 0, 5, header, max_len=500)
+#     pdf.ln(5)
+#
+#     # --- Main Answer/Summary Section ---
+#     render_colored_block(answer_text, 10)
+#
+#     # --- Sources Section ---
+#     pdf.set_font("Arial", 'B', 12)
+#     pdf.cell(0, 10, "III. Supporting Sources:", ln=True)
+#
+#     for i, doc in enumerate(source_docs or [], start=1):
+#         md = getattr(doc, "metadata", {}) or {}
+#
+#         # Build Source Metadata String
+#         meta_text = f"Source {i}: {md.get('source', 'unknown')} | Type: {md.get('content_type', 'N/A')} | Page: {md.get('page', 'N/A')}"
+#
+#         # Render Source Metadata (Colored Block)
+#         render_colored_block(meta_text, 8, is_heading=True)
+#
+#         pdf.set_text_color(*COLOR_BLACK)
+#         pdf.set_font("Arial", size=8)
+#
+#         # Render Table Preview or Raw Content (Inside current block color)
+#         pdf.set_fill_color(*current_color)
+#         pdf.set_font("Arial", size=8)
+#
+#         # Embed table if available (Using FPDF's internal cell logic for tables for control)
+#         if md.get("table_csv"):
+#             try:
+#                 import pandas as pd
+#                 df = pd.read_csv(StringIO(md["table_csv"]))
+#
+#                 pdf.set_font("Arial", 'B', 8)
+#                 pdf.cell(0, 4, "Table Preview (First 3 Rows):", ln=True, fill=True)
+#                 pdf.set_font("Arial", size=6)
+#
+#                 # Render Headers (Max 5 columns for layout safety)
+#                 header_str = " | ".join(df.columns[:5].astype(str).tolist())
+#                 safe_multicell(pdf, 0, 3, header_str, max_len=300)
+#
+#                 # Render Rows (Max 3 rows, Max 5 columns)
+#                 for _, row in df.head(3).iterrows():
+#                     row_str = " | ".join(map(lambda x: str(x)[:20], row.values[:5]))  # Truncate cell content
+#                     safe_multicell(pdf, 0, 3, row_str, max_len=300)
+#                 pdf.ln(1)
+#             except Exception:
+#                 pdf.set_font("Arial", size=8)
+#                 preview = getattr(doc, "page_content", "")
+#                 safe_multicell(pdf, 0, 4, "Raw Content Preview: " + preview, max_len=400)
+#         else:
+#             # Render standard text content preview
+#             preview = getattr(doc, "page_content", "")
+#             safe_multicell(pdf, 0, 4, preview, max_len=400)
+#
+#         pdf.ln(2)  # Add space after source block
+#
+#     pdf.output(filename)
+#     return filename
 
 
 ####
@@ -946,71 +1220,71 @@ from datetime import datetime
 from pathlib import Path
 from fpdf import FPDF
 
-def safe_text(text, max_len=400):
-    """Break long words and truncate text for safe PDF rendering."""
-    if not text:
-        return ""
-    text = str(text).replace("\n", " ")
-    # Insert spaces into very long words (every 80 chars)
-    safe = re.sub(r"(\S{80})(?=\S)", r"\1 ", text)
-    return safe[:max_len] + ("..." if len(text) > max_len else "")
-
-def save_response_to_pdf(answer_text, source_docs, filename="output.pdf", user_query=None):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-
-    # Timestamp + user query
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    header = f"Generated on: {timestamp}\n"
-    if user_query:
-        header += f"User Query: {user_query}\n"
-    safe_multicell(pdf, 0, 10, header, max_len=500)
-    pdf.ln(5)
-
-    # Answer section
-    safe_multicell(pdf, 0, 10, f"Answer:\n{answer_text}", max_len=1000)
-
-    # Sources section
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Supporting Sources:", ln=True)
-    pdf.set_font("Arial", size=10)
-
-    for i, doc in enumerate(source_docs, start=1):
-        md = getattr(doc, "metadata", {}) or {}
-        safe_multicell(pdf, 0, 8, f"Source {i}: {md.get('source', 'unknown')}", max_len=300)
-        preview = getattr(doc, "page_content", "")
-        safe_multicell(pdf, 0, 8, preview, max_len=400)
-        pdf.ln(5)
-
-        # Embed table if available
-        if md.get("table_csv"):
-            try:
-                import pandas as pd
-                from io import StringIO
-                df = pd.read_csv(StringIO(md["table_csv"]))
-                pdf.set_font("Arial", 'B', 10)
-                pdf.cell(0, 8, "Table preview:", ln=True)
-                pdf.set_font("Arial", size=8)
-                for idx, row in df.head(5).iterrows():
-                    row_str = ", ".join(map(str, row.values))
-                    safe_multicell(pdf, 0, 6, row_str, max_len=200)
-                pdf.ln(3)
-            except Exception:
-                pass
-
-        # Embed image if available
-        if md.get("content_type") in {"image_meta", "image_ocr"}:
-            img_path = md.get("source")
-            if img_path and Path(img_path).exists():
-                try:
-                    pdf.image(img_path, w=80)
-                    pdf.ln(5)
-                except Exception:
-                    pass
-
-    pdf.output(filename)
-    return filename
+# def safe_text(text, max_len=400):
+#     """Break long words and truncate text for safe PDF rendering."""
+#     if not text:
+#         return ""
+#     text = str(text).replace("\n", " ")
+#     # Insert spaces into very long words (every 80 chars)
+#     safe = re.sub(r"(\S{80})(?=\S)", r"\1 ", text)
+#     return safe[:max_len] + ("..." if len(text) > max_len else "")
+#
+# def save_response_to_pdf(answer_text, source_docs, filename="output.pdf", user_query=None):
+#     pdf = FPDF()
+#     pdf.add_page()
+#     pdf.set_font("Arial", size=12)
+#
+#     # Timestamp + user query
+#     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#     header = f"Generated on: {timestamp}\n"
+#     if user_query:
+#         header += f"User Query: {user_query}\n"
+#     safe_multicell(pdf, 0, 10, header, max_len=500)
+#     pdf.ln(5)
+#
+#     # Answer section
+#     safe_multicell(pdf, 0, 10, f"Answer:\n{answer_text}", max_len=1000)
+#
+#     # Sources section
+#     pdf.set_font("Arial", 'B', 12)
+#     pdf.cell(0, 10, "Supporting Sources:", ln=True)
+#     pdf.set_font("Arial", size=10)
+#
+#     for i, doc in enumerate(source_docs, start=1):
+#         md = getattr(doc, "metadata", {}) or {}
+#         safe_multicell(pdf, 0, 8, f"Source {i}: {md.get('source', 'unknown')}", max_len=300)
+#         preview = getattr(doc, "page_content", "")
+#         safe_multicell(pdf, 0, 8, preview, max_len=400)
+#         pdf.ln(5)
+#
+#         # Embed table if available
+#         if md.get("table_csv"):
+#             try:
+#                 import pandas as pd
+#                 from io import StringIO
+#                 df = pd.read_csv(StringIO(md["table_csv"]))
+#                 pdf.set_font("Arial", 'B', 10)
+#                 pdf.cell(0, 8, "Table preview:", ln=True)
+#                 pdf.set_font("Arial", size=8)
+#                 for idx, row in df.head(5).iterrows():
+#                     row_str = ", ".join(map(str, row.values))
+#                     safe_multicell(pdf, 0, 6, row_str, max_len=200)
+#                 pdf.ln(3)
+#             except Exception:
+#                 pass
+#
+#         # Embed image if available
+#         if md.get("content_type") in {"image_meta", "image_ocr"}:
+#             img_path = md.get("source")
+#             if img_path and Path(img_path).exists():
+#                 try:
+#                     pdf.image(img_path, w=80)
+#                     pdf.ln(5)
+#                 except Exception:
+#                     pass
+#
+#     pdf.output(filename)
+#     return filename
 
 # ----------------------------
 # User chat input
@@ -1664,33 +1938,79 @@ elif selected_new == "Nodal Analysis Results":
 
     # 7. Export to PDF with proper formatting
     if st.button("Export Full Results to PDF"):
+
         try:
+            # ----------------------------------------------------
+            # Build Operating Point Table
+            # ----------------------------------------------------
+            op_table = {
+                "Flowrate (m³/hr)": f"{results['sol_flow']:.2f}",
+                "Bottomhole Pressure (bar)": f"{results['sol_pbh']:.2f}",
+                "Pump Head (m)": f"{results['sol_head']:.1f}",
+            }
+
+            # ----------------------------------------------------
+            # Build Parameter Table (Automatic Dict Table Builder)
+            # ----------------------------------------------------
+            parameter_dict = {
+                "Reservoir Pressure (bar)": params.get("reservoir_pressure", "-"),
+                "Wellhead Pressure (bar)": params.get("wellhead_pressure", "-"),
+                "Productivity Index (m³/hr/bar)": params.get("PI", "-"),
+                "ESP Depth (m)": params.get("esp_depth", "-"),
+                "Fluid Density (kg/m³)": params.get("density", "-"),
+                "Viscosity (cP)": params.get("viscosity", "-"),
+                "Tubing Roughness (mm)": params.get("roughness", "-"),
+            }
+
+            # ----------------------------------------------------
+            # SAVE nodal plot image temporarily
+            # ----------------------------------------------------
+            plot_path = "temp_nodal_plot.png"
+            fig.savefig(plot_path, dpi=300, bbox_inches="tight")
+
+            # ----------------------------------------------------
+            # Build summary text
+            # ----------------------------------------------------
             main_analysis_text = f"""
-            **Analysis Summary:**
-            {summary_text}
+            Nodal Analysis Summary
 
-            **Operating Point:**
+            Operating Point:
             Flowrate (Q): {results['sol_flow']:.2f} m³/hr
-            BHP: {results['sol_pbh']:.2f} bar
-            Pump Head: {results['sol_head']:.1f} m (If available)
+            Bottomhole Pressure (BHP): {results['sol_pbh']:.2f} bar
+            Pump Head: {results['sol_head']:.1f} m
 
-            **Key Extracted Data:**
+            Extracted Parameters:
             Reservoir Pressure: {params.get('reservoir_pressure', '-')} bar
-            Wellhead Pressure: {params.get('wellhead_pressure', '-')} bar
             PI: {params.get('PI', '-')} m³/hr/bar
             ESP Depth: {params.get('esp_depth', '-')} m
+
+            Full LLM Summary:
+            {summary_text}
             """
 
+            # ----------------------------------------------------
+            # CALL UPDATED PDF GENERATOR
+            # ----------------------------------------------------
             pdf_file = f"nodal_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            save_response_to_pdf(main_analysis_text, source_docs, filename=pdf_file,
-                                 user_query="Nodal Analysis Results")
+
+            save_response_to_pdf(
+                answer_text=main_analysis_text,
+                source_docs=source_docs,
+                filename=pdf_file,
+                user_query="Nodal Analysis Results",
+                operating_point=op_table,  # >>> ADDED <<<
+                parameter_dict=parameter_dict,  # >>> ADDED <<<
+                nodal_plot_path=plot_path  # >>> ADDED <<<
+            )
 
             st.success(f"📄 PDF saved: {pdf_file}")
+
             with open(pdf_file, "rb") as f:
                 st.download_button("⬇️ Download Results PDF", f, file_name=pdf_file, mime="application/pdf")
 
         except Exception as e:
             st.error(f"Failed to generate or save PDF: {e}")
+
 # ----------------------------
 # Option 4: Vision Part
 # ----------------------------
