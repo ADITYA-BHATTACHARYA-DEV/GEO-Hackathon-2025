@@ -10,6 +10,13 @@ import math
 import numpy as np
 from io import StringIO
 
+import streamlit as st
+from pathlib import Path
+import requests
+import base64
+import json
+from fpdf import FPDF
+from PIL import Image
 # Core prompt template
 from langchain_core.prompts import PromptTemplate
 
@@ -695,6 +702,7 @@ except Exception:
 
 
 
+
 # OCR support (images + PDF raster)
 ocr_support = {"pytesseract": None, "PIL": None}
 try:
@@ -967,34 +975,149 @@ def extract_excel(file_path):
     return docs
 
 def extract_image(file_path):
-    docs = []
+    """
+    Full Vision Analysis + OCR + Table Extraction using Ollama (llava-phi3)
+    Returns a Document with structured output.
+    """
+
+    import base64
+    import requests
+    from pathlib import Path
+    from langchain_core.documents import Document
+
     source = str(file_path)
-    if ocr_support["pytesseract"] and ocr_support["PIL"]:
-        try:
-            img = Image.open(source)
-            text = pytesseract.image_to_string(img)
-            if text.strip():
-                docs.append(Document(
-                    page_content=f"OCR text from image {Path(source).name}:\n{text}",
-                    metadata={"source": source, "content_type": "image_ocr"}
-                ))
-            else:
-                docs.append(Document(
-                    page_content=f"Image {Path(source).name} (no OCR text detected).",
-                    metadata={"source": source, "content_type": "image_meta"}
-                ))
-        except Exception as e:
-            st.info(f"OCR failed for {source}: {e}")
-            docs.append(Document(
-                page_content=f"Image {Path(source).name}.",
+
+    # -----------------------------
+    # Load image
+    # -----------------------------
+    try:
+        with open(source, "rb") as f:
+            img_bytes = f.read()
+        b64 = base64.b64encode(img_bytes).decode()
+    except Exception as e:
+        return [
+            Document(
+                page_content=f"[Could not read image: {e}]",
                 metadata={"source": source, "content_type": "image_meta"}
-            ))
-    else:
-        docs.append(Document(
-            page_content=f"Image {Path(source).name}.",
-            metadata={"source": source, "content_type": "image_meta"}
-        ))
-    return docs
+            )
+        ]
+
+    # -----------------------------
+    # Vision prompt (FULL)
+    # -----------------------------
+    vision_prompt = (
+        "You are an advanced Vision-OCR model.\n"
+        "Your tasks:\n"
+        "1) Describe the image in detail (objects, diagrams, graphs, engineering equipment).\n"
+        "2) Extract ALL readable text exactly as in the image.\n"
+        "3) Detect and reconstruct any tables.\n"
+        "Respond ONLY in this structured format:\n\n"
+        "DESCRIPTION:\n<your detailed visual description>\n\n"
+        "TEXT OCR:\n<all extracted text>\n\n"
+        "TABLES:\n<tables in plain text>\n"
+    )
+
+    # -----------------------------
+    # Call llava-phi3 (Ollama)
+    # -----------------------------
+    OLLAMA_URL = "http://localhost:11434/api/generate"
+
+    payload = {
+        "model": "llava-phi3",
+        "prompt": vision_prompt,
+        "images": [b64]
+    }
+
+    try:
+        r = requests.post(OLLAMA_URL, json=payload, timeout=120)
+
+        # Handle old Ollama "streaming" text format
+        try:
+            data = r.json()
+            vision_text = data.get("response", "")
+        except:
+            # fallback: remove streaming garbage
+            vision_text = r.text.split('"}')[-1]
+
+    except Exception as e:
+        return [
+            Document(
+                page_content=f"[Vision model unavailable: {e}]",
+                metadata={"source": source, "content_type": "image_meta"}
+            )
+        ]
+
+    # -----------------------------
+    # Return structured document
+    # -----------------------------
+    return [
+        Document(
+            page_content=f"VISION ANALYSIS OUTPUT for {Path(source).name}:\n\n{vision_text}",
+            metadata={"source": source, "content_type": "image_vision"}
+        )
+    ]
+import json
+import requests
+
+def parse_ollama_streaming_response(raw_text):
+    """Aggregate 'response' fields from Ollama streaming NDJSON"""
+    final_text = ""
+    for line in raw_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if "response" in obj:
+                final_text += obj["response"]
+        except json.JSONDecodeError:
+            continue
+    return final_text.strip()
+
+def ask_vision_question(vision_text, user_question, model="llava-phi3", timeout=300):
+    """
+    Send the user_question to the vision model using vision_text as context.
+    Returns a cleaned textual answer (string).
+    """
+    if not vision_text:
+        return "No vision context available to answer the question."
+
+    OLLAMA_URL = "http://localhost:11434/api/generate"
+
+    prompt = (
+        "You are a helpful assistant. Use ONLY the following VISION ANALYSIS CONTEXT "
+        "to answer the user's question. If the information is not present or ambiguous, "
+        "explicitly say 'I cannot determine from the image.'\n\n"
+        "VISION ANALYSIS CONTEXT:\n"
+        f"{vision_text}\n\n"
+        "USER QUESTION:\n"
+        f"{user_question}\n\n"
+        "Answer concisely and directly. Do NOT invent facts. If you must make a best-effort "
+        "inference, label it as an inference."
+    )
+
+    payload = {
+        "model": model,
+        "prompt": prompt,
+    }
+
+    try:
+        r = requests.post(OLLAMA_URL, json=payload, timeout=timeout)
+        r.raise_for_status()
+    except Exception as e:
+        return f"Vision model request failed: {e}"
+
+    # Parse JSON or fallback to streaming NDJSON
+    answer = ""
+    try:
+        data = r.json()
+        answer = data.get("response", "")
+        if not answer:
+            answer = parse_ollama_streaming_response(r.text)
+    except Exception:
+        answer = parse_ollama_streaming_response(r.text)
+
+    return answer.strip() if answer else "I cannot determine from the image."
 
 def load_documents(file_path):
     ext = Path(file_path).suffix.lower()
@@ -1630,8 +1753,44 @@ selected_new = option_menu(
     default_index=0,
     orientation="horizontal",
 )
+import json
+import base64
+import requests
+from pathlib import Path
+from PIL import Image
 
+def run_ollama_vision(image_path):
+    import base64
+    import requests
 
+    url = "http://localhost:11434/api/generate"
+
+    with open(image_path, "rb") as f:
+        image_bytes = f.read()
+
+    payload = {
+        "model": "llava-phi3",
+        "prompt": "Extract all readable text from the image accurately.",
+        "images": [base64.b64encode(image_bytes).decode("utf-8")]
+    }
+
+    resp = requests.post(url, json=payload, stream=True)
+
+    full_response = ""
+
+    # Ollama streams MULTIPLE JSON chunks → read line-by-line
+    for line in resp.iter_lines():
+        if not line:
+            continue
+        try:
+            obj = json.loads(line.decode("utf-8"))
+            chunk = obj.get("response", "")
+            full_response += chunk
+        except:
+            # Ignore partial chunks
+            pass
+
+    return full_response.strip()
 # ----------------------------
 # Option 1: Summary Generation
 # ----------------------------
@@ -2014,27 +2173,185 @@ elif selected_new == "Nodal Analysis Results":
 # ----------------------------
 # Option 4: Vision Part
 # ----------------------------
-elif selected_new == "Vision Part":
-    st.subheader("Vision-based Document Analysis")
-    uploaded_image = st.file_uploader("Upload an image for OCR/vision analysis", type=["png","jpg","jpeg"])
 
-    if uploaded_image:
-        st.success("Image uploaded. Running OCR/vision analysis...")
 
-        # Save temporarily
-        img_path = f"pdfFiles/{uploaded_image.name}"
-        with open(img_path, "wb") as f:
-            f.write(uploaded_image.read())
+# ----------------------------
+# Option 4: Vision Part
+# ----------------------------
 
-        docs = extract_image(img_path)
-        if docs:
-            ocr_text = docs[0].page_content
-            st.markdown("### OCR Extracted Text")
-            st.markdown(ocr_text)
+# -----------------------------
+# Helper: Extract text from image using Ollama Vision Model
+# -----------------------------
+import requests
+import json
+from pathlib import Path
+import base64
 
-            # Save OCR text to PDF
-            pdf_file = f"pdfFiles/vision_{Path(uploaded_image.name).stem}.pdf"
-            save_response_to_pdf(ocr_text, docs, filename=pdf_file, user_query="Vision Analysis")
+# -----------------------------
+# Extract text + description from image
+# -----------------------------
+import base64
+import requests
+import json
+from pathlib import Path
 
-            with open(pdf_file, "rb") as f:
-                st.download_button("📄 Download Vision PDF", f, file_name=Path(pdf_file).name, mime="application/pdf")
+def extract_image(file_path, model="llava-phi3", timeout=120):
+    """Extract readable text and description from an image using the vision model."""
+    try:
+        with open(file_path, "rb") as f:
+            img_bytes = f.read()
+        b64_image = base64.b64encode(img_bytes).decode("utf-8")
+    except Exception as e:
+        return f"[Error reading image: {e}]"
+
+    prompt = (
+        "You are an advanced vision-OCR model. "
+        "1) Describe the image in detail (what it contains, objects, diagrams, equipment).\n"
+        "2) Extract ALL readable text exactly.\n"
+        "3) If tables exist, reconstruct them in plain text.\n"
+        "Respond in clean structured format:\n\n"
+        "DESCRIPTION:\n...\n\n"
+        "TEXT OCR:\n...\n\n"
+        "TABLES:\n...\n"
+    )
+
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "images": [b64_image]
+    }
+
+    try:
+        r = requests.post("http://localhost:11434/api/generate", json=payload, timeout=timeout)
+        r.raise_for_status()
+    except Exception as e:
+        return f"[Vision model unavailable: {e}]"
+
+    # Parse streaming JSON or normal JSON
+    extracted_text = ""
+    for line in r.text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            extracted_text += obj.get("response", "")
+        except:
+            continue
+
+    return extracted_text.strip() or "[No text detected]"
+
+def ask_vision_question(vision_text, user_question, model="llava-phi3", timeout=120):
+    if not vision_text:
+        return "No vision context available to answer the question."
+
+    prompt = (
+        "You are a helpful assistant. Use ONLY the following VISION ANALYSIS CONTEXT "
+        "to answer the user's question. If the information is not present or ambiguous, "
+        "explicitly say 'I cannot determine from the image.'\n\n"
+        "VISION ANALYSIS CONTEXT:\n"
+        f"{vision_text}\n\n"
+        "USER QUESTION:\n"
+        f"{user_question}\n\n"
+        "Answer concisely and directly. Do NOT invent facts. "
+        "If you must make a best-effort inference, label it as an inference."
+    )
+
+    payload = {
+        "model": model,
+        "prompt": prompt
+    }
+
+    try:
+        r = requests.post("http://localhost:11434/api/generate", json=payload, timeout=timeout)
+        r.raise_for_status()
+    except Exception as e:
+        return f"[Vision model request failed: {e}]"
+
+    # parse streaming JSON
+    answer = ""
+    for line in r.text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            answer += obj.get("response", "")
+        except:
+            continue
+
+    return answer.strip() or "I cannot determine from the image."
+
+
+# -----------------------------
+# Helper: Save PDF
+# -----------------------------
+def save_response_to_pdf(answer_text, filename="vision_output.pdf"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 14)
+    pdf.multi_cell(0, 10, "VISION ANALYSIS OUTPUT", align="C")
+    pdf.ln(5)
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 6, answer_text)
+    pdf.output(filename)
+    return filename
+
+# -----------------------------
+# Vision Part UI
+# -----------------------------
+st.subheader("Vision-based Chat & OCR Analysis")
+
+uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+
+if uploaded_image:
+    # show image
+    st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
+
+    # save temporarily
+    img_path = f"pdfFiles/{uploaded_image.name}"
+    with open(img_path, "wb") as f:
+        f.write(uploaded_image.read())
+
+    # extract vision text
+    vision_text = extract_image(img_path)
+
+    st.markdown("### 🔍 Vision Analysis Output")
+    st.text_area("Vision Analysis", vision_text, height=250)
+
+    # initialize chat history
+    if "vision_chat" not in st.session_state:
+        st.session_state["vision_chat"] = []
+
+    # Display chat
+    for msg in st.session_state["vision_chat"]:
+        if msg["role"] == "user":
+            st.markdown(f"**👤 You:** {msg['content']}")
+        else:
+            st.markdown(f"**🧠 Assistant:** {msg['content']}")
+
+    # input box
+    user_input = st.text_input(
+        "Ask the assistant about the image (e.g. 'What is this image about?')",
+        key="vision_input",
+        value=""
+    )
+    send = st.button("Send")
+
+    if send and user_input:
+        st.session_state["vision_chat"].append({"role": "user", "content": user_input})
+
+        with st.spinner("Generating answer from vision model..."):
+            reply = ask_vision_question(vision_text, user_input)
+
+        st.session_state["vision_chat"].append({"role": "assistant", "content": reply})
+
+        # refresh UI
+        st.experimental_rerun()
+
+    # Always provide PDF download
+    pdf_file = f"pdfFiles/vision_{Path(uploaded_image.name).stem}.pdf"
+    save_response_to_pdf(vision_text, pdf_file)
+    with open(pdf_file, "rb") as f:
+        st.download_button("📄 Download Vision PDF", f, file_name=Path(pdf_file).name, mime="application/pdf")
+
