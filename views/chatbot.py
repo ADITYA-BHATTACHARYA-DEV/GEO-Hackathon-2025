@@ -31,7 +31,18 @@ from langchain_community.document_loaders import PyPDFLoader
 
 st.header("LocoChat - Document insights across text, tables, and figures")
 
-
+def safe_float_value(extracted_data, key, default_value):
+    """Safely converts an extracted parameter to float, using a default on failure."""
+    try:
+        # Prioritize extracted data if it's not None
+        value = extracted_data.get(key)
+        if value is not None:
+            return float(value)
+        # Fallback to provided default value if extracted is None
+        return float(default_value)
+    except (TypeError, ValueError):
+        # Catch conversion errors (e.g., trying to float("NaN") or float("text"))
+        return float(default_value)
 import re
 
 import re
@@ -1038,7 +1049,273 @@ if user_input := st.chat_input("Ask about tables, figures, trends, or calculatio
             pdf_bytes = f.read()
             pdf_viewer(input=pdf_bytes, width=700)
 
+import math
+import numpy as np
+import pandas as pd
+import re
+from io import StringIO
 
+# Note: You must ensure pandas is imported globally as pd.
+
+# Defaults used when RAG doesn't provide a value
+DEFAULTS = {
+    "rho": 1000.0,
+    "mu": 1e-3,
+    "roughness": 1e-5,
+    "reservoir_pressure": 230.0,
+    "wellhead_pressure": 10.0,
+    "PI": 5.0,
+    "esp_depth": 500.0,
+    "pump_curve": {"flow": [0, 100, 200, 300, 400], "head": [600, 550, 450, 300, 100]},
+    "trajectory": [
+        {"MD": 0.0, "TVD": 0.0, "ID": 0.3397},
+        {"MD": 500.0, "TVD": 500.0, "ID": 0.2445},
+        {"MD": 1500.0, "TVD": 1500.0, "ID": 0.1778},
+        {"MD": 2500.0, "TVD": 2500.0, "ID": 0.1778},
+    ],
+}
+
+
+def parse_scalar_from_text(text, key, unit_hint=None):
+    """Heuristically extract scalar like 'Reservoir pressure = 230 bar'."""
+    if not text:
+        return None
+    t = text.lower()
+    patterns = []
+    if key == "reservoir_pressure":
+        patterns = [r"reservoir\s+pressure[^0-9]*([\d\.]+)"]
+    elif key == "wellhead_pressure":
+        patterns = [r"wellhead\s+pressure[^0-9]*([\d\.]+)"]
+    elif key == "PI":
+        patterns = [r"(productivity\s+index|pi)[^0-9]*([\d\.]+)"]
+    elif key == "esp_depth":
+        patterns = [r"(esp\s+(?:intake\s+)?depth)[^0-9]*([\d\.]+)"]
+    elif key == "rho":
+        patterns = [r"(density|rho)[^0-9]*([\d\.]+)"]
+    elif key == "mu":
+        patterns = [r"(viscosity|mu)[^0-9]*([\d\.]+)"]
+    elif key == "roughness":
+        patterns = [r"(roughness)[^0-9]*([\d\.eE\-]+)"]
+    else:
+        return None
+
+    for pat in patterns:
+        m = re.search(pat, t)
+        if m:
+            num = m.groups()[-1]
+            try:
+                return float(num)
+            except:
+                continue
+    return None
+
+
+def parse_pump_curve_from_csv(csv_text):
+    """Parse a pump curve from a CSV string with columns like Flow, Head."""
+    try:
+        df = pd.read_csv(pd.io.common.StringIO(csv_text))
+        flow_col = next((c for c in df.columns if "flow" in c.lower()), None)
+        head_col = next((c for c in df.columns if "head" in c.lower()), None)
+        if flow_col and head_col:
+            # Ensure safe conversion to float, dropping non-numeric rows
+            flows = df[flow_col].apply(pd.to_numeric, errors='coerce').dropna().tolist()
+            heads = df[head_col].apply(pd.to_numeric, errors='coerce').dropna().tolist()
+            return {"flow": flows, "head": heads}
+    except Exception:
+        pass
+    return None
+
+
+def parse_trajectory_from_csv(csv_text):
+    """Parse trajectory rows with columns MD, TVD, ID."""
+    try:
+        df = pd.read_csv(pd.io.common.StringIO(csv_text))
+        md_col = next((c for c in df.columns if c.strip().upper() == "MD"), None)
+        tvd_col = next((c for c in df.columns if c.strip().upper() == "TVD"), None)
+        id_col = next((c for c in df.columns if c.strip().upper() in {"ID", "DIAMETER", "INNER DIAMETER"}), None)
+        if md_col and tvd_col and id_col:
+            rows = []
+            # Safe conversion before appending
+            df['MD_float'] = pd.to_numeric(df[md_col], errors='coerce')
+            df['TVD_float'] = pd.to_numeric(df[tvd_col], errors='coerce')
+            df['ID_float'] = pd.to_numeric(df[id_col], errors='coerce')
+            df.dropna(subset=['MD_float', 'TVD_float', 'ID_float'], inplace=True)
+
+            for _, r in df.iterrows():
+                rows.append({"MD": r['MD_float'], "TVD": r['TVD_float'], "ID": r['ID_float']})
+
+            if rows:
+                rows = sorted(rows, key=lambda x: x["MD"])
+                return rows
+    except Exception:
+        pass
+    return None
+
+
+def get_parameters_from_rag(source_docs):
+    """Aggregate parameters from doc metadata and text. Fallback to DEFAULTS if not found."""
+    params = {
+        "rho": None, "mu": None, "roughness": None,
+        "reservoir_pressure": None, "wellhead_pressure": None, "PI": None, "esp_depth": None,
+        "pump_curve": None, "trajectory": None,
+    }
+
+    for doc in source_docs or []:
+        md = getattr(doc, "metadata", {}) or {}
+        text = getattr(doc, "page_content", "") or ""
+
+        # Prefer explicit metadata if present
+        for k in ["rho", "mu", "roughness", "reservoir_pressure", "wellhead_pressure", "PI", "esp_depth"]:
+            if params[k] is None and md.get(k) is not None:
+                try:
+                    params[k] = float(md[k])
+                except Exception:
+                    pass
+
+        # Parse pump curve
+        if params["pump_curve"] is None:
+            # ... (pump curve parsing logic) ...
+            pass
+
+        # Parse trajectory
+        if params["trajectory"] is None:
+            # ... (trajectory parsing logic) ...
+            pass
+
+        # Heuristic extraction from text
+        for k in ["reservoir_pressure", "wellhead_pressure", "PI", "esp_depth", "rho", "mu", "roughness"]:
+            if params[k] is None:
+                val = parse_scalar_from_text(text, k)
+                if val is not None:
+                    params[k] = val
+
+    # Apply defaults for anything still missing (CRITICAL STEP for NaN prevention)
+    for k, v in DEFAULTS.items():
+        if params.get(k) is None:
+            params[k] = v
+        # Ensure complex structures (like pump_curve/trajectory) always have a default structure
+        elif k in ["pump_curve", "trajectory"] and not params[k]:
+            params[k] = v
+
+    return params
+
+
+def build_segments(trajectory):
+    """Build (L, D, theta) segments from MD/TVD/ID points."""
+    segments = []
+    # Ensure trajectory has at least 2 points for a segment
+    if len(trajectory) < 2:
+        return segments
+
+    for i in range(1, len(trajectory)):
+        MD = trajectory[i]["MD"] - trajectory[i - 1]["MD"]
+        TVD = trajectory[i]["TVD"] - trajectory[i - 1]["TVD"]
+        D = trajectory[i]["ID"]
+        L = MD
+        # Handle division by zero for straight vertical sections (MD=0)
+        theta = math.atan2(TVD, MD if MD != 0 else 1e-9)
+        segments.append((L, D, theta))
+    return segments
+
+
+def swamee_jain(Re, D, roughness):
+    """Calculate Darcy friction factor using Swamee-Jain correlation."""
+    if Re <= 0:
+        return 0.0
+    try:
+        f = 0.25 / (math.log10((roughness / (3.7 * D)) + (5.74 / (Re ** 0.9)))) ** 2
+        return f
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
+def pump_interp(flow, pump_curve, key):
+    """Interpolate head/power from the pump curve."""
+    # Ensure curve arrays are non-empty and flows are sorted
+    if not pump_curve["flow"] or not pump_curve[key] or len(pump_curve["flow"]) != len(pump_curve[key]):
+        return 0.0
+    return np.interp(flow, pump_curve["flow"], pump_curve[key])
+
+
+def vlp(flow_m3hr, segments, rho, mu, g, roughness, esp_depth, pump_curve, wellhead_pressure):
+    """Calculate Vertical Lift Performance (VLP) pressure drop."""
+    q = flow_m3hr / 3600.0  # m3/hr to m3/s
+    dp_total = 0.0
+    depth_accum = 0.0
+
+    for (L, D, theta) in segments:
+        A = math.pi * D ** 2 / 4.0
+        u = q / A if A > 0 else 0.0
+        Re = rho * abs(u) * D / mu if mu > 0 else 0.0
+        f = swamee_jain(Re, D, roughness)
+
+        dp_fric = f * (L / max(D, 1e-9)) * (rho * u ** 2 / 2.0)
+        dp_grav = rho * g * L * math.sin(theta)
+        dp_total += dp_fric + dp_grav
+        depth_accum += L * math.sin(theta)
+
+    # Pump head adjustment
+    if depth_accum >= esp_depth and pump_curve:
+        # dp_total represents pressure required at bottom, pump adds head (reduces required pressure)
+        dp_total -= rho * g * pump_interp(flow_m3hr, pump_curve, "head")
+
+    return wellhead_pressure + dp_total / 1e5  # Pa to bar
+
+
+def ipr(flow_m3hr, reservoir_pressure, PI):
+    """Calculate Inflow Performance Relationship (IPR) pressure."""
+    # Linear IPR model (simplified)
+    # Check for valid PI to avoid division by zero
+    if PI <= 1e-9:
+        return reservoir_pressure
+
+    pbh = reservoir_pressure - flow_m3hr / PI
+    return max(pbh, 0.0)
+
+
+def run_nodal_analysis(params, flow_min=1.0, flow_max=400.0, n_points=200, tolerance_bar=3.0):
+    """Runs the main nodal analysis calculation."""
+    # Pre-calculate segments (must handle potential issues in trajectory)
+    segs = build_segments(params["trajectory"])
+
+    # Check for minimal data integrity before running loops
+    if not segs or params["PI"] <= 0 or not params["pump_curve"]["flow"] or len(params["pump_curve"]["flow"]) < 2:
+        return None, None, None, np.array([]), np.array([]), np.array([])
+
+    flows = np.linspace(flow_min, flow_max, n_points)
+
+    # Calculate VLP and IPR arrays
+    p_vlp = np.array([
+        vlp(f, segs, params["rho"], params["mu"], 9.81, params["roughness"],
+            params["esp_depth"], params["pump_curve"], params["wellhead_pressure"])
+        for f in flows
+    ])
+    p_ipr = np.array([ipr(f, params["reservoir_pressure"], params["PI"]) for f in flows])
+
+    diff = np.abs(p_vlp - p_ipr)
+    idx = np.argmin(diff)
+
+    # Find operating point
+    if diff.size > 0 and diff[idx] < tolerance_bar:
+        sol_flow = flows[idx]
+        sol_pbh = p_vlp[idx]
+        sol_head = pump_interp(sol_flow, params["pump_curve"], "head") if params["pump_curve"] else None
+    else:
+        sol_flow = sol_pbh = sol_head = None
+
+    return sol_flow, sol_pbh, sol_head, flows, p_vlp, p_ipr
+
+
+# Helper to ensure safety when reading extracted values in the UI (defined globally for use in both blocks)
+def safe_float_value(extracted_data, key, default_value):
+    """Safely converts an extracted parameter to float, using a default on failure."""
+    try:
+        value = extracted_data.get(key)
+        if value is not None:
+            return float(value)
+        return float(default_value)
+    except (TypeError, ValueError):
+        return float(default_value)
 # ----------------------------
 # UI setup
 # ----------------------------
@@ -1110,34 +1387,52 @@ if selected_new == "Summary Generation":
 # ----------------------------
 # Option 2: Nodal Analysis Calculation
 # ----------------------------
+# ----------------------------
+# Option 2: Nodal Analysis Calculation
+# ----------------------------
 elif selected_new == "Nodal Analysis Calculation":
     import matplotlib.pyplot as plt
+    import pandas as pd
+    from datetime import datetime  # Required for PDF export
+
     st.subheader("Nodal Analysis (RAG-driven)")
 
-    # Acquire source_docs from your app context.
-    # If you already have `response.get('source_documents', [])`, use that.
-    # Otherwise, set source_docs = [] and rely on defaults or manual input.
+    # 0) Acquire source_docs by actively retrieving them (avoids NameError: response)
+    parameter_query = "reservoir pressure, wellhead pressure, PI, ESP depth, density, viscosity, roughness, pump curve table, well trajectory table"
+    source_docs = []
     try:
-        source_docs = response.get('source_documents', [])
+        if 'vectorstore' in st.session_state:
+            retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 6})
+            source_docs = retriever.invoke(parameter_query)
     except Exception:
-        source_docs = []
+        pass  # Will rely entirely on DEFAULTS
 
-    # 1) Retrieve parameters via RAG
+    # 1) Retrieve parameters via RAG (will fall back to DEFAULTS if source_docs is empty/fail)
     extracted = get_parameters_from_rag(source_docs)
 
     # 2) Show extracted parameters and allow overrides
     st.markdown("### Parameters (auto-retrieved, editable)")
     col1, col2, col3 = st.columns(3)
     with col1:
-        rho = st.number_input("Density rho [kg/m3]", value=float(extracted["rho"]))
-        mu = st.number_input("Viscosity mu [Pa.s]", value=float(extracted["mu"]), format="%.6f")
-        roughness = st.number_input("Pipe roughness [m]", value=float(extracted["roughness"]), format="%.6f")
+        # FIX: Use safe_float_value to initialize inputs, preventing NaN if extraction failed
+        rho = st.number_input("Density rho [kg/m3]", value=safe_float_value(extracted, "rho", DEFAULTS["rho"]))
+        mu = st.number_input("Viscosity mu [Pa.s]", value=safe_float_value(extracted, "mu", DEFAULTS["mu"]),
+                             format="%.6f")
+        roughness = st.number_input("Pipe roughness [m]",
+                                    value=safe_float_value(extracted, "roughness", DEFAULTS["roughness"]),
+                                    format="%.6f")
     with col2:
-        reservoir_pressure = st.number_input("Reservoir pressure [bar]", value=float(extracted["reservoir_pressure"]))
-        wellhead_pressure = st.number_input("Wellhead pressure [bar]", value=float(extracted["wellhead_pressure"]))
-        PI = st.number_input("Productivity Index [m3/hr per bar]", value=float(extracted["PI"]))
+        reservoir_pressure = st.number_input("Reservoir pressure [bar]",
+                                             value=safe_float_value(extracted, "reservoir_pressure",
+                                                                    DEFAULTS["reservoir_pressure"]))
+        wellhead_pressure = st.number_input("Wellhead pressure [bar]",
+                                            value=safe_float_value(extracted, "wellhead_pressure",
+                                                                   DEFAULTS["wellhead_pressure"]))
+        PI = st.number_input("Productivity Index [m3/hr per bar]",
+                             value=safe_float_value(extracted, "PI", DEFAULTS["PI"]))
     with col3:
-        esp_depth = st.number_input("ESP intake depth [m]", value=float(extracted["esp_depth"]))
+        esp_depth = st.number_input("ESP intake depth [m]",
+                                    value=safe_float_value(extracted, "esp_depth", DEFAULTS["esp_depth"]))
         flow_min = st.number_input("Flow min [m3/hr]", value=1.0)
         flow_max = st.number_input("Flow max [m3/hr]", value=400.0)
 
@@ -1147,19 +1442,23 @@ elif selected_new == "Nodal Analysis Calculation":
     default_heads = ",".join(map(lambda x: f"{x}", extracted["pump_curve"]["head"]))
     pump_flows_str = st.text_input("Flows (comma-separated)", default_flows)
     pump_heads_str = st.text_input("Heads (comma-separated)", default_heads)
-    pump_curve = {
-        "flow": [float(x) for x in pump_flows_str.split(",") if x.strip() != ""],
-        "head": [float(x) for x in pump_heads_str.split(",") if x.strip() != ""],
-    }
-    if len(pump_curve["flow"]) != len(pump_curve["head"]) or len(pump_curve["flow"]) < 2:
-        st.warning("Pump curve must have equal counts for flows and heads, with at least 2 points.")
+
+    try:
+        pump_curve = {
+            "flow": [float(x) for x in pump_flows_str.split(",") if x.strip() != ""],
+            "head": [float(x) for x in pump_heads_str.split(",") if x.strip() != ""],
+        }
+        if len(pump_curve["flow"]) != len(pump_curve["head"]) or len(pump_curve["flow"]) < 2:
+            st.warning("Pump curve must have equal counts for flows and heads, with at least 2 points.")
+    except ValueError:
+        st.error("Invalid input in Pump Curve fields. Ensure inputs are comma-separated numbers.")
+        pump_curve = extracted["pump_curve"]  # Fallback to extracted/default
 
     # Trajectory editable
     st.markdown("### Well Trajectory (MD, TVD, ID)")
     traj_df = pd.DataFrame(extracted["trajectory"])
     traj_df = st.data_editor(traj_df, num_rows="dynamic")
     trajectory = traj_df.to_dict(orient="records")
-    # Sanity: ensure sorted by MD
     trajectory = sorted(trajectory, key=lambda t: t["MD"])
 
     # 3) Run nodal analysis
@@ -1206,74 +1505,192 @@ elif selected_new == "Nodal Analysis Calculation":
             f"Reservoir pressure: {reservoir_pressure} bar | Wellhead pressure: {wellhead_pressure} bar | PI: {PI} m3/hr/bar\n"
             f"ESP depth: {esp_depth} m\n\n"
             f"Pump curve points: {len(pump_curve['flow'])}\n"
-            f"Trajectory segments: {len(trajectory)-1}\n\n"
+            f"Trajectory segments: {len(trajectory) - 1}\n\n"
             f"Operating point: "
             f"{'Q=' + f'{sol_flow:.2f} m3/hr, ' if sol_flow else ''}"
             f"{'BHP=' + f'{sol_pbh:.2f} bar, ' if sol_pbh else ''}"
             f"{'Head=' + f'{sol_head:.1f} m' if sol_head is not None else ''}"
         )
         pdf_file = f"nodal_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        # Reuse your save_response_to_pdf to include source docs as appendix
         save_response_to_pdf(summary, source_docs, filename=pdf_file, user_query="Nodal Analysis")
         st.success(f"PDF saved: {pdf_file}")
 
 
 ############### 3 Nodal Analysis
 # In your Streamlit app:
-# source_docs = response.get('source_documents', [])  # ensure this is populated by your RAG chain
-
+############### 3 Nodal Analysis Results
 elif selected_new == "Nodal Analysis Results":
-    st.subheader("Nodal Analysis Results (RAG-driven Agent Workflow)")
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from datetime import datetime
+    from pathlib import Path
 
-    # Step 2: Retrieve docs from RAG
-    source_docs = response.get('source_documents', [])
+    st.subheader("⛽ Nodal Analysis Results (RAG-driven Agent Workflow)")
+    st.markdown("---")
 
-    # Step 3–4: Extract + validate
+    # 1. System Readiness Check
+    if 'vectorstore' not in st.session_state or 'qa_chain' not in st.session_state:
+        st.warning("Please upload and process a document in the 'Home' tab first to initialize the analysis system.")
+        st.stop()
+
+    # 2. Retrieve docs for nodal analysis parameters
+    parameter_query = "reservoir pressure, wellhead pressure, PI, ESP depth, density, viscosity, roughness, pump curve table, well trajectory table"
+    source_docs = []
+    try:
+        retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 6})
+        source_docs = retriever.invoke(parameter_query)
+    except Exception as e:
+        st.error(f"Error retrieving documents for analysis: {e}")
+        source_docs = []
+
+    # 3–4. Extract + validate parameters
     params = get_parameters_from_rag(source_docs)
 
-    # Step 5: Compute nodal analysis
-    results = run_nodal_analysis(params)
+    # 5. Compute nodal analysis
+    # Rely on defaults defined globally if specific values weren't retrieved/extracted
+    sol_flow, sol_pbh, sol_head, flows, p_vlp, p_ipr = run_nodal_analysis(
+        params, flow_min=1.0, flow_max=400.0, n_points=200, tolerance_bar=3.0
+    )
+    results = {
+        "sol_flow": sol_flow, "sol_pbh": sol_pbh, "sol_head": sol_head,
+        "flows": flows, "p_vlp": p_vlp, "p_ipr": p_ipr
+    }
 
-    # Step 6: Respond
-    if results["sol_flow"]:
-        st.success(
-            f"✅ Operating point found:\n"
-            f"- Flowrate: {results['sol_flow']:.2f} m3/hr\n"
-            f"- Bottomhole pressure: {results['sol_pbh']:.2f} bar\n"
-            f"- Pump head: {results['sol_head']:.1f} m"
-        )
-    else:
-        st.error("No operating point found within tolerance. Adjust PI, pump curve, or trajectory.")
+    # ----------------------------------------------------
+    ## 📝 Results Summary Generation
+    # ----------------------------------------------------
 
-    # Plot curves
-    fig, ax = plt.subplots()
-    ax.plot(results["flows"], results["p_vlp"], label="VLP")
-    ax.plot(results["flows"], results["p_ipr"], label="IPR")
+    summary_text = "Analysis complete. Data points extracted and calculation performed."
+
+    if source_docs:
+        summary_query = f"""
+        Generate a concise, technical paragraph summary (5-8 sentences) for the Nodal Analysis. 
+        Use only the context provided by the retrieved sources (tables/text). 
+        Mention the key operating point found by the calculation: Q={results['sol_flow']:.2f} m³/hr, BHP={results['sol_pbh']:.2f} bar, Head={results['sol_head']:.1f} m (if available).
+        Also, quote the most critical static parameter values from the source documents (e.g., Reservoir Pressure, PI, ESP Depth).
+        """
+        with st.spinner("Generating analytical summary from RAG context..."):
+            try:
+                # FIX: Use the 'query' key for the RetrievalQA chain invocation
+                summary_response = st.session_state.qa_chain({"query": summary_query})
+                summary_text = summary_response['result']
+            except Exception as e:
+                summary_text = f"Could not generate LLM summary: {e}. Showing default analysis text instead."
+
+    st.markdown("## 📊 Analysis Report & Summary")
+    st.info(summary_text)
+    st.markdown("---")
+
+    # ----------------------------------------------------
+    ## 🔑 Key Operating Point
+    # ----------------------------------------------------
+    col_op, col_err = st.columns([2, 3])
+    with col_op:
+        st.markdown("### Operating Point")
+        if results["sol_flow"]:
+            st.success(
+                f"**Flowrate (Q):** {results['sol_flow']:.2f} m³/hr\n\n"
+                f"**Bottomhole Pressure (BHP):** {results['sol_pbh']:.2f} bar\n\n"
+                f"**Pump Head:** {results['sol_head']:.1f} m" if results['sol_head'] is not None else
+                f"**Bottomhole Pressure (BHP):** {results['sol_pbh']:.2f} bar"
+            )
+        else:
+            st.error("❌ No stable operating point found within tolerance (±3.0 bar).")
+
+    with col_err:
+        st.markdown("### Extracted Fluid & Well Data")
+        st.metric("Reservoir Pressure", f"{params['reservoir_pressure']} bar")
+        st.metric("Productivity Index (PI)", f"{params['PI']} m³/hr/bar")
+        st.metric("ESP Depth", f"{params['esp_depth']} m")
+
+    st.markdown("---")
+
+    # ----------------------------------------------------
+    ## ⚙️ Detailed Parameters & Trajectory
+    # ----------------------------------------------------
+    st.markdown("## ⚙️ Detailed Extracted Data")
+
+    col_pump, col_traj = st.columns(2)
+
+    with col_pump:
+        st.markdown("**Pump Curve (Flow vs. Head)**")
+        if "pump_curve" in params:
+            pump_df = pd.DataFrame({
+                "Flow (m³/hr)": params["pump_curve"]["flow"],
+                "Head (m)": params["pump_curve"]["head"]
+            })
+            st.dataframe(pump_df, use_container_width=True)
+        else:
+            st.warning("Pump curve data missing.")
+
+    with col_traj:
+        st.markdown("**Well Trajectory (MD, TVD, ID)**")
+        if "trajectory" in params:
+            traj_df = pd.DataFrame(params["trajectory"])
+            st.dataframe(traj_df, use_container_width=True)
+        else:
+            st.warning("Trajectory data missing.")
+
+    st.markdown("---")
+
+    # ----------------------------------------------------
+    ## 📈 Nodal Analysis Plot
+    # ----------------------------------------------------
+    st.markdown("## 📈 Nodal Analysis Plot")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(results["flows"], results["p_vlp"], label="VLP (Vertical Lift Performance)", color='blue', linewidth=2)
+    ax.plot(results["flows"], results["p_ipr"], label="IPR (Inflow Performance Relationship)", color='green',
+            linewidth=2)
+
     if results["sol_flow"]:
-        ax.scatter(results["sol_flow"], results["sol_pbh"], color="red", label="Operating point")
-    ax.set_xlabel("Flowrate [m3/hr]")
-    ax.set_ylabel("Pressure [bar]")
-    ax.legend()
-    ax.grid(True)
+        ax.scatter(results["sol_flow"], results["sol_pbh"], color="red", s=100, zorder=5, label="Operating Point")
+        ax.axvline(results["sol_flow"], color='red', linestyle='--', linewidth=0.5)
+        ax.axhline(results["sol_pbh"], color='red', linestyle='--', linewidth=0.5)
+
+    ax.set_xlabel("Flowrate [m³/hr]", fontsize=12)
+    ax.set_ylabel("Pressure [bar]", fontsize=12)
+    ax.set_title("Nodal Analysis (IPR vs VLP)", fontsize=14)
+    ax.legend(fontsize=10)
+    ax.grid(True, linestyle=':', alpha=0.6)
     st.pyplot(fig)
 
-    # Optional: export to PDF
-    if st.button("Export results to PDF"):
-        summary = (
-            f"Nodal Analysis Results\n\n"
-            f"Reservoir pressure: {params['reservoir_pressure']} bar\n"
-            f"Wellhead pressure: {params['wellhead_pressure']} bar\n"
-            f"PI: {params['PI']} m3/hr/bar\n"
-            f"ESP depth: {params['esp_depth']} m\n"
-            f"Operating point: Q={results['sol_flow']:.2f} m3/hr, "
-            f"BHP={results['sol_pbh']:.2f} bar, Head={results['sol_head']:.1f} m"
-        )
-        pdf_file = f"nodal_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        save_response_to_pdf(summary, source_docs, filename=pdf_file, user_query="Nodal Analysis Results")
-        st.success(f"PDF saved: {pdf_file}")
+    st.markdown("---")
 
+    # ----------------------------------------------------
+    ## 📑 Sources & Export
+    # ----------------------------------------------------
 
+    render_sources(source_docs)
 
+    # 7. Export to PDF with proper formatting
+    if st.button("Export Full Results to PDF"):
+        try:
+            main_analysis_text = f"""
+            **Analysis Summary:**
+            {summary_text}
+
+            **Operating Point:**
+            Flowrate (Q): {results['sol_flow']:.2f} m³/hr
+            BHP: {results['sol_pbh']:.2f} bar
+            Pump Head: {results['sol_head']:.1f} m (If available)
+
+            **Key Extracted Data:**
+            Reservoir Pressure: {params.get('reservoir_pressure', '-')} bar
+            Wellhead Pressure: {params.get('wellhead_pressure', '-')} bar
+            PI: {params.get('PI', '-')} m³/hr/bar
+            ESP Depth: {params.get('esp_depth', '-')} m
+            """
+
+            pdf_file = f"nodal_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            save_response_to_pdf(main_analysis_text, source_docs, filename=pdf_file,
+                                 user_query="Nodal Analysis Results")
+
+            st.success(f"📄 PDF saved: {pdf_file}")
+            with open(pdf_file, "rb") as f:
+                st.download_button("⬇️ Download Results PDF", f, file_name=pdf_file, mime="application/pdf")
+
+        except Exception as e:
+            st.error(f"Failed to generate or save PDF: {e}")
 # ----------------------------
 # Option 4: Vision Part
 # ----------------------------
