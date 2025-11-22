@@ -97,6 +97,23 @@ def safe_multicell(pdf, w, h, text, max_len=400):
     except Exception:
         pdf.cell(w, h, safe_text(text, max_len=100), ln=True)
 
+def load_and_index_pdf(uploaded_path):
+    docs = []
+
+    docs += extract_pdf_text_base(uploaded_path)
+    docs += extract_pdf_tables_camelot(uploaded_path)
+
+    t, f = extract_pdf_tables_pdfplumber(uploaded_path)
+    docs += t
+    docs += f
+
+    if docs:
+        st.session_state.vectorstore.add_documents(docs)
+        st.success(f"Indexed {len(docs)} chunks from {uploaded_path}")
+    else:
+        st.warning("No extractable content found.")
+
+    return docs
 
 import numpy as np
 from fpdf import FPDF
@@ -856,77 +873,197 @@ def extract_pdf_tables_camelot(source):
             continue
     return docs
 
+# def extract_pdf_tables_pdfplumber(source):
+#     docs = []
+#     if not pdf_support["pdfplumber"]:
+#         return docs
+#     try:
+#         with pdf_support["pdfplumber"].open(source) as pdf:
+#             for page_idx, page in enumerate(pdf.pages, start=1):
+#                 # pdfplumber table extraction
+#                 try:
+#                     tables = page.extract_tables()
+#                     for t_idx, table in enumerate(tables, start=1):
+#                         df = excel_support["pandas"].DataFrame(table) if excel_support["pandas"] else None
+#                         if df is not None:
+#                             md, csv_str = df_to_markdown_and_csv(df, title=f"{Path(source).name} p{page_idx} Table {t_idx} (pdfplumber)")
+#                         else:
+#                             # Fallback to simple formatting
+#                             md = f"Table on page {page_idx}, index {t_idx}:\n" + "\n".join([", ".join(row) for row in table])
+#                             csv_str = "\n".join([",".join(row) for row in table])
+#                         docs.append(Document(
+#                             page_content=md,
+#                             metadata={
+#                                 "source": source, "content_type": "table",
+#                                 "label": f"Table p{page_idx}-{t_idx}", "parser": "pdfplumber", "page": page_idx,
+#                                 "table_csv": csv_str
+#                             }
+#                         ))
+#                 except Exception:
+#                     pass
+#                 # Figure/graph captions heuristic
+#                 text = page.extract_text() or ""
+#                 lines = text.splitlines()
+#                 fig_blocks = []
+#                 for i, line in enumerate(lines):
+#                     if re.search(r'\b(Figure|Fig\.)\s*\d+', line, flags=re.I):
+#                         block = [line]
+#                         for j in range(1, 3):
+#                             if i + j < len(lines):
+#                                 block.append(lines[i + j])
+#                         fig_blocks.append("\n".join(block))
+#                 for k, cap in enumerate(fig_blocks):
+#                     docs.append(Document(
+#                         page_content=f"Figure Caption (page {page_idx}):\n{cap}",
+#                         metadata={"source": source, "content_type": "figure_caption", "page": page_idx, "label": f"Figure {k+1}"}
+#                     ))
+#     except Exception as e:
+#         st.info(f"pdfplumber extraction skipped: {e}")
+#     return docs
 def extract_pdf_tables_pdfplumber(source):
-    docs = []
+    tables = []
+    figures = []
     if not pdf_support["pdfplumber"]:
-        return docs
+        return tables  # keep your original usage pattern
+
     try:
         with pdf_support["pdfplumber"].open(source) as pdf:
             for page_idx, page in enumerate(pdf.pages, start=1):
-                # pdfplumber table extraction
+                # TABLES
                 try:
-                    tables = page.extract_tables()
-                    for t_idx, table in enumerate(tables, start=1):
-                        df = excel_support["pandas"].DataFrame(table) if excel_support["pandas"] else None
-                        if df is not None:
-                            md, csv_str = df_to_markdown_and_csv(df, title=f"{Path(source).name} p{page_idx} Table {t_idx} (pdfplumber)")
-                        else:
-                            # Fallback to simple formatting
-                            md = f"Table on page {page_idx}, index {t_idx}:\n" + "\n".join([", ".join(row) for row in table])
-                            csv_str = "\n".join([",".join(row) for row in table])
-                        docs.append(Document(
+                    extracted = page.extract_tables()
+                    for t_idx, table in enumerate(extracted, start=1):
+                        df = pd.DataFrame(table)
+                        md, csv_str = df_to_markdown_and_csv(df, title=f"{Path(source).name} p{page_idx} Table {t_idx} (pdfplumber)")
+                        tables.append(Document(
                             page_content=md,
                             metadata={
-                                "source": source, "content_type": "table",
-                                "label": f"Table p{page_idx}-{t_idx}", "parser": "pdfplumber", "page": page_idx,
+                                "source": source,
+                                "content_type": "table",
+                                "page": page_idx,
+                                "parser": "pdfplumber",
+                                "label": f"Table p{page_idx}-{t_idx}",
                                 "table_csv": csv_str
                             }
                         ))
-                except Exception:
+                except:
                     pass
-                # Figure/graph captions heuristic
-                text = page.extract_text() or ""
-                lines = text.splitlines()
-                fig_blocks = []
-                for i, line in enumerate(lines):
-                    if re.search(r'\b(Figure|Fig\.)\s*\d+', line, flags=re.I):
-                        block = [line]
-                        for j in range(1, 3):
-                            if i + j < len(lines):
-                                block.append(lines[i + j])
-                        fig_blocks.append("\n".join(block))
-                for k, cap in enumerate(fig_blocks):
-                    docs.append(Document(
-                        page_content=f"Figure Caption (page {page_idx}):\n{cap}",
-                        metadata={"source": source, "content_type": "figure_caption", "page": page_idx, "label": f"Figure {k+1}"}
-                    ))
+
+                # FIGURE CAPTIONS
+                txt = page.extract_text() or ""
+                for line in txt.splitlines():
+                    if re.search(r"(Figure|Fig\.)\s*\d+", line, flags=re.I):
+                        figures.append(Document(
+                            page_content=f"Figure Caption (page {page_idx}): {line}",
+                            metadata={
+                                "source": source,
+                                "content_type": "figure_caption",
+                                "page": page_idx
+                            }
+                        ))
     except Exception as e:
         st.info(f"pdfplumber extraction skipped: {e}")
-    return docs
+
+    # Flatten to match your existing downstream pattern
+    return tables + figures
+
+# def extract_pdf_ocr(source, dpi=200):
+#     docs = []
+#     # OCR scanned PDFs by rasterizing pages
+#     if not (pdf_support["fitz"] and ocr_support["pytesseract"] and ocr_support["PIL"]):
+#         return docs
+#     try:
+#         doc = pdf_support["fitz"].open(source)
+#         for page_idx in range(len(doc)):
+#             page = doc.load_page(page_idx)
+#             zoom = dpi / 72.0
+#             mat = pdf_support["fitz"].Matrix(zoom, zoom)
+#             pix = page.get_pixmap(matrix=mat)
+#             img = ocr_support["PIL"].Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+#             text = ocr_support["pytesseract"].image_to_string(img)
+#             if text.strip():
+#                 docs.append(Document(
+#                     page_content=f"OCR page {page_idx+1}:\n{text}",
+#                     metadata={"source": source, "content_type": "ocr_text", "page": page_idx+1, "parser": "pymupdf+tesseract"}
+#                 ))
+#         doc.close()
+#     except Exception as e:
+#         st.info(f"PDF OCR skipped: {e}")
+#     return docs
+
 
 def extract_pdf_ocr(source, dpi=200):
     docs = []
     # OCR scanned PDFs by rasterizing pages
     if not (pdf_support["fitz"] and ocr_support["pytesseract"] and ocr_support["PIL"]):
         return docs
+
+    doc = None  # Initialize outside try block
     try:
         doc = pdf_support["fitz"].open(source)
         for page_idx in range(len(doc)):
-            page = doc.load_page(page_idx)
-            zoom = dpi / 72.0
-            mat = pdf_support["fitz"].Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat)
-            img = ocr_support["PIL"].Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            text = ocr_support["pytesseract"].image_to_string(img)
-            if text.strip():
-                docs.append(Document(
-                    page_content=f"OCR page {page_idx+1}:\n{text}",
-                    metadata={"source": source, "content_type": "ocr_text", "page": page_idx+1, "parser": "pymupdf+tesseract"}
-                ))
+            # --- START per-page error handling to isolate bad pages ---
+            try:
+                page = doc.load_page(page_idx)
+                zoom = dpi / 72.0
+                mat = pdf_support["fitz"].Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix=mat, alpha=False)  # Ensure alpha is off for RGB
+
+                # CRITICAL GUARD: Check if samples is bytes (required by PIL)
+                if isinstance(pix.samples, bytes):
+                    img = ocr_support["PIL"].Image.frombytes(
+                        "RGB",
+                        [pix.width, pix.height],
+                        pix.samples
+                    )
+                    text = ocr_support["pytesseract"].image_to_string(img)
+                    if text.strip():
+                        docs.append(Document(
+                            page_content=f"OCR page {page_idx + 1}:\n{text}",
+                            metadata={"source": source, "content_type": "ocr_text", "page": page_idx + 1,
+                                      "parser": "pymupdf+tesseract"}
+                        ))
+                else:
+                    # This case handles non-byte data, which might be the source of the 'str' error
+                    st.warning(f"OCR skipped page {page_idx + 1}: PyMuPDF did not return expected byte data.")
+            except Exception as page_e:
+                # Log the specific error for this page instead of crashing the whole process
+                st.info(f"PDF OCR skipped page {page_idx + 1} due to error: {page_e}")
+            # --- END per-page error handling ---
+
         doc.close()
     except Exception as e:
-        st.info(f"PDF OCR skipped: {e}")
+        st.info(f"PDF OCR process failed entirely: {e}")
+    finally:
+        # Ensures the document is closed even if an exception occurs
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
     return docs
+
+
+def load_and_index_pdf(uploaded_path):
+    docs = []
+
+    docs.extend(extract_pdf_text_base(uploaded_path))
+    docs.extend(extract_pdf_tables_camelot(uploaded_path))
+
+    # pdfplumber returns a single list → must be handled
+    pdfplumber_docs = extract_pdf_tables_pdfplumber(uploaded_path)
+    docs.extend(pdfplumber_docs)
+
+    docs.extend(extract_pdf_ocr(uploaded_path))
+
+    if docs:
+        st.session_state.vectorstore.add_documents(docs)
+        st.success(f"Indexed {len(docs)} chunks from {uploaded_path}")
+    else:
+        st.warning("No extractable content found.")
+
+    return docs
+
 
 def extract_pdf(file_path):
     source = str(file_path)
@@ -1218,6 +1355,37 @@ selected = option_menu(
     orientation="horizontal",
     key="main_menu"   # <-- unique key
 )
+def run_rag_query(user_question):
+    docs = st.session_state.vectorstore.similarity_search(user_question, k=6)
+
+    # Build context
+    context = ""
+    if docs:
+        context = "\n\n".join([d.page_content for d in docs])
+
+    # Prevent empty fields
+    history = st.session_state.memory.load_memory_variables({}).get("history", [])
+    history_text = "\n".join([f"{m.type}: {m.content}" for m in history]) if history else "No previous conversation."
+    context_text = context if context.strip() else "No retrieved context."
+
+    # Build prompt
+    prompt = st.session_state.prompt.format(
+        history=history_text,
+        context=context_text,
+        question=user_question,
+    )
+
+    # Run model
+    response = st.session_state.text_llm(prompt)
+
+    # Save memory
+    st.session_state.memory.save_context(
+        {"question": user_question},
+        {"answer": response},
+    )
+
+    return response, docs
+
 
 # selected_new = option_menu(
 #     menu_title="Analysis Menu",
@@ -1267,8 +1435,6 @@ if selected == "History":
     else:
         st.info("No PDFs uploaded yet.")
 
-
-
 if selected == "Home":
     st.title(f"You have selected {selected}")
     col1, col2 = st.columns(2)
@@ -1280,7 +1446,7 @@ if selected == "Home":
 
     uploaded_file = st.file_uploader(
         "Choose a file",
-        type=["pdf","docx","csv","png","jpg","jpeg","xlsx","xls"]
+        type=["pdf", "docx", "csv", "png", "jpg", "jpeg", "xlsx", "xls"]
     )
 
     # Display chat history
@@ -1290,16 +1456,45 @@ if selected == "Home":
 
     if uploaded_file is not None:
         file_path = f'pdfFiles/{uploaded_file.name}'
-        if not os.path.exists(file_path):
-            st.info("Saving and processing the uploaded file...")
+
+        # --- MODIFICATION START: Check if the file is NEW or needs re-indexing ---
+        is_file_new = not os.path.exists(file_path)
+        is_already_indexed = False
+
+        # Simple heuristic to check if file name is already in the vector store (imperfect but better than nothing)
+        try:
+            # We assume a document is 'indexed' if a chunk contains its source path.
+            # This is a basic, quick check to avoid re-indexing
+            if not is_file_new:
+                check_result = st.session_state.vectorstore.similarity_search(
+                    f"source: {file_path}", k=1
+                )
+                is_already_indexed = any(d.metadata.get('source') == file_path for d in check_result)
+        except Exception:
+            pass  # Ignore if Chroma isn't ready
+
+        if is_file_new or not is_already_indexed:
+            if is_already_indexed:
+                st.info("Re-indexing existing file to ensure data quality.")
+            else:
+                st.info("Saving and processing the uploaded file...")
+
+            # Save the file (if new) or overwrite (if re-indexing)
             with open(file_path, 'wb') as f:
                 f.write(uploaded_file.read())
 
+            # Load and index the new/updated document
             docs = load_documents(file_path)
             if docs:
                 chunks = chunk_documents(docs)
+                # Note: For simplicity, we add chunks; a more robust app would delete old chunks first.
                 st.session_state.vectorstore.add_documents(chunks)
                 st.session_state.vectorstore.persist()
+
+            # --- MODIFICATION END ---
+
+        else:
+            st.success(f"File '{uploaded_file.name}' is already indexed. Ready for querying.")
 
         # Retriever
         st.session_state.retriever = st.session_state.vectorstore.as_retriever(
@@ -1320,9 +1515,16 @@ if selected == "Home":
             }
         )
 
+        # --- DIAGNOSTIC CHECK (Highly recommended to keep) ---
+        try:
+            db_count = st.session_state.vectorstore._collection.count()
+            st.info(f"✅ Vector Store Document Count: {db_count} chunks loaded.")
+        except Exception:
+            st.warning("Could not count vector store documents. Check Ollama server.")
+        # ----------------------------------------------------
+
         # Controls
         auto_plot = st.checkbox("Auto-plot numeric tables from retrieved sources", value=True)
-
 
 ##
 from datetime import datetime
@@ -1794,29 +1996,89 @@ def run_ollama_vision(image_path):
 # ----------------------------
 # Option 1: Summary Generation
 # ----------------------------
+# ----------------------------
+# Option 1: Summary Generation (CORRECTED)
+# ----------------------------
 if selected_new == "Summary Generation":
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from datetime import datetime  # Ensure datetime is imported
+    from pathlib import Path  # Ensure Path is imported
+
     st.subheader("Generate a Summary")
     summary_length = st.selectbox("Select summary length:", ["Short", "Medium", "Long"])
     summary_type = st.selectbox("Select summary type:", ["Technical", "General", "Executive"])
 
-    if user_input := st.chat_input("Enter text or ask for a summary:"):
+    # 1. Prepare the retrieval query based on user selections
+    retrieval_prompt = f"Summarize the entire document set. Focus on {summary_type} data, key facts, and overall conclusions for a {summary_length} summary."
+
+    if user_input := st.chat_input("Enter a specific topic to summarize, or leave empty for a full document summary:"):
+        st.session_state.chat_history.append({"role": "user", "message": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
         with st.spinner("Generating summary..."):
-            # Use your QA chain or summarization logic
-            response = st.session_state.qa_chain(user_input)
-            summary_text = response['result']
 
-        st.markdown(f"### {summary_length} {summary_type} Summary")
-        st.markdown(summary_text)
+            # --- MODIFICATION START ---
 
-        # Save summary to PDF
-        pdf_file = f"pdfFiles/summary_{summary_length}_{summary_type}.pdf"
-        save_response_to_pdf(summary_text, response.get('source_documents', []),
-                             filename=pdf_file, user_query=user_input)
+            # Use the user's input for retrieval if it's specific (more than 3 words),
+            # otherwise use the general retrieval_prompt to pull broad context.
+            retrieval_query = user_input if len(user_input.split()) > 3 else retrieval_prompt
 
-        with open(pdf_file, "rb") as f:
-            st.download_button("📄 Download Summary PDF", f, file_name=Path(pdf_file).name, mime="application/pdf")
+            # Step A: Manually retrieve a larger number of documents (k=10)
+            # to ensure enough context is gathered for a full summary.
+            try:
+                retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 10})
+                source_docs = retriever.invoke(retrieval_query)
+            except Exception:
+                source_docs = []  # Fallback to empty list if retrieval fails
 
+            # Step B: Construct the final LLM question, ensuring the selected type/length is used
+            # even if the user's chat input was generic.
+            llm_question = f"{retrieval_prompt}. Use the following query for context relevance: '{user_input}'"
 
+            # Prepare the input dictionary for the RetrievalQA chain
+            # The chain will use the retrieved documents (source_docs) as context.
+            chain_input = {
+                "query": llm_question,  # Use the specialized prompt as the main query
+                # RetrievalQA chain will internally handle context injection from its retriever.
+            }
+
+            # 1. Call the RetrievalQA chain
+            response = st.session_state.qa_chain(chain_input)
+
+            # 2. Correctly retrieve the generated answer using the 'result' output key
+            summary_text = response.get("result",
+                                        "Error: Summary could not be generated. Check RAG context or LLM connection.")
+            # Note: RetrievalQA returns source_documents in the response dictionary
+            source_docs = response.get('source_documents', source_docs)
+
+            # --- MODIFICATION END ---
+
+        st.session_state.chat_history.append({"role": "assistant", "message": summary_text})
+        with st.chat_message("assistant"):
+            st.markdown(f"### {summary_length} {summary_type} Summary")
+            st.markdown(summary_text)
+
+            # Show sources
+            render_sources(source_docs)
+
+            # Save summary to PDF
+            pdf_file = f"pdfFiles/summary_{summary_length}_{summary_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            save_response_to_pdf(
+                summary_text,
+                source_docs,
+                filename=pdf_file,
+                user_query=user_input
+            )
+
+            with open(pdf_file, "rb") as f:
+                st.download_button(
+                    "📄 Download Summary PDF",
+                    f,
+                    file_name=Path(pdf_file).name,
+                    mime="application/pdf"
+                )
 # ----------------------------
 # Option 2: Nodal Analysis Calculation
 # ----------------------------
