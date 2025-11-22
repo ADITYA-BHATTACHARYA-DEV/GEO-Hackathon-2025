@@ -2407,4 +2407,3 @@ if uploaded_image:
     save_response_to_pdf(vision_text, pdf_file)
     with open(pdf_file, "rb") as f:
         st.download_button("📄 Download Vision PDF", f, file_name=Path(pdf_file).name, mime="application/pdf")
-

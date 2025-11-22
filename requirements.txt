@@ -8,5 +8,3 @@ streamlit
 streamlit_option_menu
 SpeechRecognition
 pyttsx3
-pyaudio
-streamlit_pdf_viewer
