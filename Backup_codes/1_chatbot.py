@@ -1007,17 +1007,10 @@ def extract_pdf_ocr(source, dpi=200):
                 page = doc.load_page(page_idx)
                 zoom = dpi / 72.0
                 mat = pdf_support["fitz"].Matrix(zoom, zoom)
-
-                # Check for page size or content issues before pixmap
-                if page.rect.width == 0 or page.rect.height == 0:
-                    raise ValueError("Page dimensions are zero, skipping pixmap generation.")
-
                 pix = page.get_pixmap(matrix=mat, alpha=False)  # Ensure alpha is off for RGB
 
                 # CRITICAL GUARD: Check if samples is bytes (required by PIL)
                 if isinstance(pix.samples, bytes):
-                    # The original 'str' object has no attribute 'width' error likely happens
-                    # here if a previous failure state corrupted 'pix' or the PIL Image object.
                     img = ocr_support["PIL"].Image.frombytes(
                         "RGB",
                         [pix.width, pix.height],
@@ -1031,27 +1024,23 @@ def extract_pdf_ocr(source, dpi=200):
                                       "parser": "pymupdf+tesseract"}
                         ))
                 else:
+                    # This case handles non-byte data, which might be the source of the 'str' error
                     st.warning(f"OCR skipped page {page_idx + 1}: PyMuPDF did not return expected byte data.")
             except Exception as page_e:
                 # Log the specific error for this page instead of crashing the whole process
                 st.info(f"PDF OCR skipped page {page_idx + 1} due to error: {page_e}")
             # --- END per-page error handling ---
 
-        # REMOVED: doc.close() call here to prevent double closing if finally block runs
-
+        doc.close()
     except Exception as e:
-        # Catch any failure during the document open or page loop setup
         st.info(f"PDF OCR process failed entirely: {e}")
-
     finally:
-        # Ensures the document is closed safely, only if it was opened and is not yet closed.
-        if doc and not doc.is_closed:
+        # Ensures the document is closed even if an exception occurs
+        if doc:
             try:
                 doc.close()
-            except Exception as close_e:
-                # Catch any remaining exception during close
-                st.warning(f"Error during final document close: {close_e}")
-
+            except Exception:
+                pass
     return docs
 
 
@@ -1082,14 +1071,9 @@ def extract_pdf(file_path):
     docs.extend(extract_pdf_text_base(source))
     # Tables (Camelot + pdfplumber fallback)
     docs.extend(extract_pdf_tables_camelot(source))
-
-    # pdfplumber returns a single list -> must be handled
-    pdfplumber_docs = extract_pdf_tables_pdfplumber(source)
-    docs.extend(pdfplumber_docs)
-
-    # OCR (scanned PDFs) - COMMENT OUT IF YOU KNOW PAGES ARE CORRUPTED
-    # docs.extend(extract_pdf_ocr(source))
-
+    docs.extend(extract_pdf_tables_pdfplumber(source))
+    # OCR (scanned PDFs)
+    docs.extend(extract_pdf_ocr(source))
     return docs
 
 def extract_excel(file_path):
@@ -2009,55 +1993,6 @@ def run_ollama_vision(image_path):
             pass
 
     return full_response.strip()
-
-
-
-
-# def save_vision_pdf(answer_text, image_path, filename="vision_output.pdf"):
-#     """Saves the vision analysis output and embeds the source image."""
-#     from fpdf import FPDF
-#     from pathlib import Path
-#     from datetime import datetime
-#
-#     pdf = FPDF()
-#     pdf.set_auto_page_break(auto=True, margin=15)
-#     pdf.add_page()
-#
-#     # Title
-#     pdf.set_font("Arial", "B", 14)
-#     pdf.set_text_color(10, 60, 150)
-#     pdf.cell(0, 10, "VISION ANALYSIS REPORT", ln=1, align="C")
-#     pdf.set_text_color(0, 0, 0)
-#     pdf.ln(5)
-#
-#     # Embed Image
-#     if image_path and Path(image_path).exists():
-#         pdf.set_font("Arial", "B", 10)
-#         pdf.cell(0, 7, "Source Image:", ln=1)
-#         try:
-#             # Calculate maximum width for the image (80% of page width)
-#             max_w = pdf.w * 0.7
-#             pdf.image(image_path, x='C', w=max_w)
-#             pdf.ln(5)
-#         except Exception:
-#             pdf.set_text_color(180, 0, 0)
-#             pdf.cell(0, 7, "Error loading image into PDF.", ln=1)
-#             pdf.set_text_color(0, 0, 0)
-#
-#     # Analysis Output
-#     pdf.set_font("Arial", "B", 10)
-#     pdf.cell(0, 7, "Vision Model Analysis Output:", ln=1)
-#     pdf.set_font("Arial", "", 10)
-#     pdf.multi_cell(0, 6, answer_text)
-#
-#     # Footer/Timestamp
-#     pdf.set_y(-12)
-#     pdf.set_font("Arial", "I", 8)
-#     pdf.set_text_color(120, 120, 120)
-#     pdf.cell(0, 10, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", align="C")
-#
-#     pdf.output(filename)
-#     return filename
 # ----------------------------
 # Option 1: Summary Generation
 # ----------------------------
@@ -2506,10 +2441,6 @@ elif selected_new == "Nodal Analysis Results":
 # Option 4: Vision Part
 # ----------------------------
 
-# ----------------------------
-# Option 4: Vision Part
-# ----------------------------
-
 # -----------------------------
 # Helper: Extract text from image using Ollama Vision Model
 # -----------------------------
@@ -2633,83 +2564,20 @@ def save_response_to_pdf(answer_text, filename="vision_output.pdf"):
 # -----------------------------
 st.subheader("Vision-based Chat & OCR Analysis")
 
-# uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
-#
-# if uploaded_image:
-#     # show image
-#     st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
-#
-#     # save temporarily
-#     img_path = f"pdfFiles/{uploaded_image.name}"
-#     with open(img_path, "wb") as f:
-#         f.write(uploaded_image.read())
-#
-#     # extract vision text
-#     vision_text = extract_image(img_path)
-#
-#     st.markdown("### 🔍 Vision Analysis Output")
-#     st.text_area("Vision Analysis", vision_text, height=250)
-#
-#     # initialize chat history
-#     if "vision_chat" not in st.session_state:
-#         st.session_state["vision_chat"] = []
-#
-#     # Display chat
-#     for msg in st.session_state["vision_chat"]:
-#         if msg["role"] == "user":
-#             st.markdown(f"**👤 You:** {msg['content']}")
-#         else:
-#             st.markdown(f"**🧠 Assistant:** {msg['content']}")
-#
-#     # input box
-#     user_input = st.text_input(
-#         "Ask the assistant about the image (e.g. 'What is this image about?')",
-#         key="vision_input",
-#         value=""
-#     )
-#     send = st.button("Send")
-#
-#     if send and user_input:
-#         st.session_state["vision_chat"].append({"role": "user", "content": user_input})
-#
-#         with st.spinner("Generating answer from vision model..."):
-#             reply = ask_vision_question(vision_text, user_input)
-#
-#         st.session_state["vision_chat"].append({"role": "assistant", "content": reply})
-#
-#         # refresh UI
-#         st.experimental_rerun()
-#
-#     # Always provide PDF download
-#     pdf_file = f"pdfFiles/vision_{Path(uploaded_image.name).stem}.pdf"
-#     save_response_to_pdf(vision_text, pdf_file)
-#     with open(pdf_file, "rb") as f:
-#         st.download_button("📄 Download Vision PDF", f, file_name=Path(pdf_file).name, mime="application/pdf")
-
 uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
 if uploaded_image:
+    # show image
+    st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
 
-    # 🔄 Spinner while image is saved, processed, and PDF generated
-    with st.spinner("Processing image..."):
-        # show image
-        st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
+    # save temporarily
+    img_path = f"pdfFiles/{uploaded_image.name}"
+    with open(img_path, "wb") as f:
+        f.write(uploaded_image.read())
 
-        # save temporarily
-        img_path = f"pdfFiles/{uploaded_image.name}"
-        with open(img_path, "wb") as f:
-            f.write(uploaded_image.read())
+    # extract vision text
+    vision_text = extract_image(img_path)
 
-        # extract vision text
-        vision_text = extract_image(img_path)
-
-        # Always provide PDF download
-        pdf_file = f"pdfFiles/vision_{Path(uploaded_image.name).stem}.pdf"
-        save_response_to_pdf(vision_text, pdf_file)
-
-    st.success("Image processed successfully!")
-
-    # Show vision analysis
     st.markdown("### 🔍 Vision Analysis Output")
     st.text_area("Vision Analysis", vision_text, height=250)
 
@@ -2730,7 +2598,6 @@ if uploaded_image:
         key="vision_input",
         value=""
     )
-
     send = st.button("Send")
 
     if send and user_input:
@@ -2744,88 +2611,8 @@ if uploaded_image:
         # refresh UI
         st.experimental_rerun()
 
-    # PDF Download Button
+    # Always provide PDF download
+    pdf_file = f"pdfFiles/vision_{Path(uploaded_image.name).stem}.pdf"
+    save_response_to_pdf(vision_text, pdf_file)
     with open(pdf_file, "rb") as f:
-        st.download_button(
-            "📄 Download Vision PDF",
-            f,
-            file_name=Path(pdf_file).name,
-            mime="application/pdf"
-        )
-
-# -----------------------------
-# New Helper: save_vision_pdf (Includes Image Embedding)
-# NOTE: This must be defined globally in your script before the Streamlit logic.
-# -----------------------------
-
-# # -----------------------------
-# # Helper: Save PDF
-# # -----------------------------
-# def save_response_to_pdf(answer_text, filename="vision_output.pdf"):
-#     pdf = FPDF()
-#     pdf.add_page()
-#     pdf.set_font("Arial", "B", 14)
-#     pdf.multi_cell(0, 10, "VISION ANALYSIS OUTPUT", align="C")
-#     pdf.ln(5)
-#     pdf.set_font("Arial", "", 10)
-#     pdf.multi_cell(0, 6, answer_text)
-#     pdf.output(filename)
-#     return filename
-#
-# # -----------------------------
-# # Vision Part UI
-# # -----------------------------
-# st.subheader("Vision-based Chat & OCR Analysis")
-#
-# uploaded_image = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
-#
-# if uploaded_image:
-#     # show image
-#     st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
-#
-#     # save temporarily
-#     img_path = f"pdfFiles/{uploaded_image.name}"
-#     with open(img_path, "wb") as f:
-#         f.write(uploaded_image.read())
-#
-#     # extract vision text
-#     vision_text = extract_image(img_path)
-#
-#     st.markdown("### 🔍 Vision Analysis Output")
-#     st.text_area("Vision Analysis", vision_text, height=250)
-#
-#     # initialize chat history
-#     if "vision_chat" not in st.session_state:
-#         st.session_state["vision_chat"] = []
-#
-#     # Display chat
-#     for msg in st.session_state["vision_chat"]:
-#         if msg["role"] == "user":
-#             st.markdown(f"**👤 You:** {msg['content']}")
-#         else:
-#             st.markdown(f"**🧠 Assistant:** {msg['content']}")
-#
-#     # input box
-#     user_input = st.text_input(
-#         "Ask the assistant about the image (e.g. 'What is this image about?')",
-#         key="vision_input",
-#         value=""
-#     )
-#     send = st.button("Send")
-#
-#     if send and user_input:
-#         st.session_state["vision_chat"].append({"role": "user", "content": user_input})
-#
-#         with st.spinner("Generating answer from vision model..."):
-#             reply = ask_vision_question(vision_text, user_input)
-#
-#         st.session_state["vision_chat"].append({"role": "assistant", "content": reply})
-#
-#         # refresh UI
-#         st.experimental_rerun()
-#
-#     # Always provide PDF download
-#     pdf_file = f"pdfFiles/vision_{Path(uploaded_image.name).stem}.pdf"
-#     save_response_to_pdf(vision_text, pdf_file)
-#     with open(pdf_file, "rb") as f:
-#         st.download_button("📄 Download Vision PDF", f, file_name=Path(pdf_file).name, mime="application/pdf")
+        st.download_button("📄 Download Vision PDF", f, file_name=Path(pdf_file).name, mime="application/pdf")
