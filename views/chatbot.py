@@ -904,29 +904,82 @@ def extract_pdf_tables_pdfplumber(source):
         st.info(f"pdfplumber extraction skipped: {e}")
     return docs
 
+# def extract_pdf_ocr(source, dpi=200):
+#     docs = []
+#     # OCR scanned PDFs by rasterizing pages
+#     if not (pdf_support["fitz"] and ocr_support["pytesseract"] and ocr_support["PIL"]):
+#         return docs
+#     try:
+#         doc = pdf_support["fitz"].open(source)
+#         for page_idx in range(len(doc)):
+#             page = doc.load_page(page_idx)
+#             zoom = dpi / 72.0
+#             mat = pdf_support["fitz"].Matrix(zoom, zoom)
+#             pix = page.get_pixmap(matrix=mat)
+#             img = ocr_support["PIL"].Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+#             text = ocr_support["pytesseract"].image_to_string(img)
+#             if text.strip():
+#                 docs.append(Document(
+#                     page_content=f"OCR page {page_idx+1}:\n{text}",
+#                     metadata={"source": source, "content_type": "ocr_text", "page": page_idx+1, "parser": "pymupdf+tesseract"}
+#                 ))
+#         doc.close()
+#     except Exception as e:
+#         st.info(f"PDF OCR skipped: {e}")
+#     return docs
+
+
 def extract_pdf_ocr(source, dpi=200):
     docs = []
     # OCR scanned PDFs by rasterizing pages
     if not (pdf_support["fitz"] and ocr_support["pytesseract"] and ocr_support["PIL"]):
         return docs
+
+    doc = None  # Initialize outside try block
     try:
         doc = pdf_support["fitz"].open(source)
         for page_idx in range(len(doc)):
-            page = doc.load_page(page_idx)
-            zoom = dpi / 72.0
-            mat = pdf_support["fitz"].Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat)
-            img = ocr_support["PIL"].Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            text = ocr_support["pytesseract"].image_to_string(img)
-            if text.strip():
-                docs.append(Document(
-                    page_content=f"OCR page {page_idx+1}:\n{text}",
-                    metadata={"source": source, "content_type": "ocr_text", "page": page_idx+1, "parser": "pymupdf+tesseract"}
-                ))
+            # --- START per-page error handling to isolate bad pages ---
+            try:
+                page = doc.load_page(page_idx)
+                zoom = dpi / 72.0
+                mat = pdf_support["fitz"].Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix=mat, alpha=False)  # Ensure alpha is off for RGB
+
+                # CRITICAL GUARD: Check if samples is bytes (required by PIL)
+                if isinstance(pix.samples, bytes):
+                    img = ocr_support["PIL"].Image.frombytes(
+                        "RGB",
+                        [pix.width, pix.height],
+                        pix.samples
+                    )
+                    text = ocr_support["pytesseract"].image_to_string(img)
+                    if text.strip():
+                        docs.append(Document(
+                            page_content=f"OCR page {page_idx + 1}:\n{text}",
+                            metadata={"source": source, "content_type": "ocr_text", "page": page_idx + 1,
+                                      "parser": "pymupdf+tesseract"}
+                        ))
+                else:
+                    # This case handles non-byte data, which might be the source of the 'str' error
+                    st.warning(f"OCR skipped page {page_idx + 1}: PyMuPDF did not return expected byte data.")
+            except Exception as page_e:
+                # Log the specific error for this page instead of crashing the whole process
+                st.info(f"PDF OCR skipped page {page_idx + 1} due to error: {page_e}")
+            # --- END per-page error handling ---
+
         doc.close()
     except Exception as e:
-        st.info(f"PDF OCR skipped: {e}")
+        st.info(f"PDF OCR process failed entirely: {e}")
+    finally:
+        # Ensures the document is closed even if an exception occurs
+        if doc:
+            try:
+                doc.close()
+            except Exception:
+                pass
     return docs
+
 
 def extract_pdf(file_path):
     source = str(file_path)
