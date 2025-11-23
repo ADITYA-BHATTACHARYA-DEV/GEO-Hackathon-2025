@@ -45,7 +45,7 @@ about_page = st.Page(
 
 project_1_page = st.Page(
     page="views/sales_dashboard.py",
-    title="Sales Dashboard",
+    title="About LocoChat: The Agentic Rag",
     icon=":material/bar_chart:",
 )
 
@@ -65,7 +65,7 @@ pg = st.navigation(
 
 # --- Optional: Add branding and sidebar content ---
 st.logo("assets/c.gif")
-st.sidebar.text("Made with ❤️ by Aditya")
+st.sidebar.text("Made with ❤️ by Aditya, Mohit, Rudra & Shreyansh")
 
 # --- Run the selected page ---
 pg.run()
