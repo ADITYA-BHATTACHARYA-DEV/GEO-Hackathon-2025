@@ -353,7 +353,7 @@ st.markdown("""
     .section-header {
         font-size: 2.2rem;
         font-weight: 800;
-        /* Changed to light color for visibility on dark background */
+        /* ENSURED LIGHT TEXT FOR DARK MODE BACKGROUND */
         color: #FFFFFF; 
         margin-top: 30px;
         margin-bottom: 10px;
@@ -364,7 +364,7 @@ st.markdown("""
     .sub-section-title {
         font-size: 1.5rem;
         font-weight: 700;
-        /* Changed to light color for visibility on dark background */
+        /* ENSURED LIGHT TEXT FOR DARK MODE BACKGROUND */
         color: #F0F0F0; 
         margin-top: 20px;
         margin-bottom: 10px;
@@ -377,14 +377,15 @@ st.markdown("""
         font-style: italic;
     }
     .responsibilities-box {
-        /* Background remains white for contained content */
+        /* Background MUST remain white for high-contrast content */
         background-color: #ffffff; 
         border-radius: 8px;
         padding: 15px;
         margin-bottom: 15px;
         border: 1px solid #e0e0e0;
         box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
-        color: #1a1a1a; /* Ensure text inside is dark gray/black (high contrast against white) */
+        /* Text inside white box MUST be dark */
+        color: #1a1a1a; 
     }
     .responsibilities-box strong {
         color: #007bff;
@@ -393,22 +394,21 @@ st.markdown("""
     .feature-point {
         font-size: 1.1rem;
         font-weight: 600;
-        /* Changed to light color for visibility on dark background */
+        /* ENSURED LIGHT TEXT FOR DARK MODE BACKGROUND */
         color: #CCCCCC; 
         margin-top: 10px;
     }
-    /* We no longer rely on custom UL styles, but this ensures generic lists are visible */
+    /* CRITICAL FIX: Ensure all list items outside the white box are light */
     .stMarkdown > div > ul {
         list-style-type: disc;
         padding-left: 20px;
     }
     .stMarkdown > div > ul > li {
-        color: #E0E0E0; /* Ensure list item text is light */
+        color: #E0E0E0 !important; /* Set to light gray, forcing visibility */
         margin-bottom: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
-
 
 st.markdown('<div class="architecture-container">', unsafe_allow_html=True)
 
@@ -416,191 +416,215 @@ st.markdown('<div class="section-header">System Architecture & Component Breakdo
 st.markdown("---")
 
 # ----------------------------------------------------------------------
-# 1. INGESTION & PRE-PROCESSING
+# TWO COLUMN LAYOUT START
 # ----------------------------------------------------------------------
 
-st.markdown('<div class="sub-section-title">1. Ingestion & Pre-processing: The Multi-Modal Data Factory</div>', unsafe_allow_html=True)
+col_left, col_right = st.columns(2)
 
-st.markdown(
+# ----------------------------------------------------------------------
+# COLUMN 1: INGESTION, EXTRACTION, NODAL SOLVER
+# ----------------------------------------------------------------------
+
+with col_left:
+    # 1. INGESTION & PRE-PROCESSING
+    st.markdown('<div class="sub-section-title">1. Ingestion & Pre-processing: The Multi-Modal Data Factory</div>',
+                unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="responsibilities-box">
+            <strong>Responsibilities:</strong>
+            <ul>
+                <li>Accepts common file types (PDF/DOCX/PNG/JPEG) and returns canonical document chunks.</li>
+                <li>For scans: apply OCR with layout detection to extract lines, tables, and images.</li>
+                <li>Produce chunk metadata: (page, <span class="technical-term">bbox</span>, <span class="technical-term">chunk_id</span>, <span class="technical-term">source_uri</span>) and save original file fingerprint.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('<p class="feature-point">Key Technical Steps:</p>', unsafe_allow_html=True)
+    st.markdown(
+        """
+    - Preprocess images (deskew, denoise).
+    - OCR + layout detection (tables, figures).
+    - Chunk text into retrieval-friendly sizes (tuned to LLM context length).
+    - Index text chunks into vector DB for retrieval.
     """
-    <div class="responsibilities-box">
-        <strong>Responsibilities:</strong>
+    )
+
+    st.markdown("---")
+
+    # 3. STRUCTURED EXTRACTION
+    st.markdown('<div class="sub-section-title">3. Structured Extraction: LLM as the Technical Parser</div>',
+                unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="responsibilities-box">
+            <strong>Field Schema (examples):</strong>
+            <ul class="step-list">
+                <li><span class="technical-term">well_id</span>, <span class="technical-term">well_name</span>, measured_depths, true_vertical_depth_m.</li>
+                <li>casing_strings, tubing_strings, perforations.</li>
+                <li>pvt ($\text{oil density}$, $\text{viscosity}$, $\text{GOR}$), reservoir ($\text{P}_{\text{r}}$, $\text{T}$, $\text{k}$, $\text{skin}$), wellhead_conditions.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('<p class="feature-point">Approach:</p>', unsafe_allow_html=True)
+    st.markdown(
+        """
+    - Prompt instruction-tuned LLM to output strict JSON according to the JSON Schema (downloadable below).
+    - Use regex and deterministic parsers as fallback to normalize numbers and units.
+    - Keep a pointer from each field to the source snippet and store extraction confidence.
+    """
+    )
+
+    st.markdown("---")
+
+    # 5. NODAL ANALYSIS ENGINE (Solver)
+    st.markdown('<div class="sub-section-title">5. Nodal Analysis Engine: The Numerical Solver Tool</div>',
+                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="responsibilities-box"><strong>Core Task:</strong> This Python tool (the <span class="technical-term">Solver Agent</span>) is responsible for building and solving the fluid dynamics models to determine the stable operating point of the well.</div>',
+        unsafe_allow_html=True)
+    st.markdown('<p class="feature-point">Models Supported:</p>', unsafe_allow_html=True)
+    st.markdown(
+        # Changed to explicit UL/LI list for better rendering
+        """
         <ul>
-            <li>Accepts common file types (PDF/DOCX/PNG/JPEG) and returns canonical document chunks.</li>
-            <li>For scans: apply OCR with layout detection to extract lines, tables, and images.</li>
-            <li>Produce chunk metadata: (page, <span class="technical-term">bbox</span>, <span class="technical-term">chunk_id</span>, <span class="technical-term">source_uri</span>) and save original file fingerprint.</li>
+            <li><span style="color: white; font-weight: bold;">IPR Models:</span> simple linear (PI), <span class="technical-term">Vogel</span>, <span class="technical-term">Fetkovich</span>, or fitted decline/IPR from history.</li>
+            <li><span style="color: white; font-weight: bold;">VLP Models:</span> hydrostatic + friction + acceleration (Beggs & Brill or simplified Darcy-Weisbach).</li>
+            <li><span style="color: white; font-weight: bold;">Numerical solver:</span> root-finding (bisection / Brent).</li>
         </ul>
-    </div>
-    """, unsafe_allow_html=True
-)
-
-st.markdown('<p class="feature-point">Key Technical Steps:</p>')
-st.markdown(
-    """
-- Preprocess images (deskew, denoise).
-- OCR + layout detection (tables, figures).
-- Chunk text into retrieval-friendly sizes (tuned to LLM context length).
-- Index text chunks into vector DB for retrieval.
-"""
-)
-
-st.markdown("---")
-
-# ----------------------------------------------------------------------
-# 2. RETRIEVAL (RAG Retriever)
-# ----------------------------------------------------------------------
-
-st.markdown('<div class="sub-section-title">2. Retrieval (RAG Retriever): The Semantic Librarian</div>', unsafe_allow_html=True)
-
-st.markdown(
-    """
-    <div class="responsibilities-box">
-        <strong>Design:</strong>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('<p class="feature-point">Flow:</p>', unsafe_allow_html=True)
+    st.markdown(
+        # Changed to explicit UL/LI list for better rendering
+        """
         <ul>
-            <li>Use dense embeddings + vector store (FAISS, Milvus) + metadata filters.</li>
-            <li>Over-fetch (<span class="technical-term">K</span> larger) and let extractor prune irrelevant chunks.</li>
-            <li>Maintain retrieval score and source pointer for each chunk.</li>
+            <li><span style="color: white; font-weight: bold;">Build IPR:</span> Build IPR from reservoir parameters or history.</li>
+            <li><span style="color: white; font-weight: bold;">Build VLP:</span> Build VLP from well geometry and fluid PVT.</li>
+            <li><span style="color: white; font-weight: bold;">Solve for q:</span> Solve for $\text{q}$ where $\text{P}_{\text{wf}}^{\text{IPR}}(\text{q}) == \text{P}_{\text{wf}}^{\text{VLP}}(\text{q})$.</li>
         </ul>
-    </div>
-    """, unsafe_allow_html=True
-)
-
-st.markdown('<p class="feature-point">Technical Implementation:</p>')
-st.markdown(
-    """
-- Uses dense embeddings + vector store (ChromaDB, or industry standards like FAISS/Milvus) + metadata filters.
-- Augmented Fetching (<span class="technical-term">K-Overfetch</span>): Designed to over-fetch to maximize the probability of capturing critical data points.
-- Auditability & Pointers: Maintains the retrieval score and source pointer (URI, page) for every chunk, enabling full traceability in the final report.
-"""
-)
-
-st.markdown("---")
-
-# ----------------------------------------------------------------------
-# 3. STRUCTURED EXTRACTION
-# ----------------------------------------------------------------------
-
-st.markdown('<div class="sub-section-title">3. Structured Extraction: LLM as the Technical Parser</div>', unsafe_allow_html=True)
-
-st.markdown(
-    """
-    <div class="responsibilities-box">
-        <strong>Field Schema (examples):</strong>
-        <ul class="step-list">
-            <li><span class="technical-term">well_id</span>, <span class="technical-term">well_name</span>, measured_depths, true_vertical_depth_m.</li>
-            <li>casing_strings, tubing_strings, perforations.</li>
-            <li>pvt ($\text{oil density}$, $\text{viscosity}$, $\text{GOR}$), reservoir ($\text{P}_{\text{r}}$, $\text{T}$, $\text{k}$, $\text{skin}$), wellhead_conditions.</li>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('<p class="feature-point">Uncertainty:</p>', unsafe_allow_html=True)
+    st.markdown(
+        # Changed to explicit UL/LI list for better rendering
+        """
+        <ul>
+            <li><span style="color: white; font-weight: bold;">Monte Carlo Sweeps:</span> Optionally run Monte Carlo sweeps across uncertain inputs ($\text{PI}$, $\text{P}_{\text{r}}$, permeability).</li>
         </ul>
-    </div>
-    """, unsafe_allow_html=True
-)
-
-st.markdown('<p class="feature-point">Approach:</p>')
-st.markdown(
-    """
-- Prompt instruction-tuned LLM to output strict JSON according to the JSON Schema (downloadable below).
-- Use regex and deterministic parsers as fallback to normalize numbers and units.
-- Keep a pointer from each field to the source snippet and store extraction confidence.
-"""
-)
-
-st.markdown("---")
+        """, unsafe_allow_html=True
+    )
 
 # ----------------------------------------------------------------------
-# 4. SANITY CHECKING & VALIDATION
+# COLUMN 2: RETRIEVAL, VALIDATION, ORCHESTRATION
 # ----------------------------------------------------------------------
 
-st.markdown('<div class="sub-section-title">4. Sanity Checking & Validation: The Deterministic Rule Engine</div>', unsafe_allow_html=True)
+with col_right:
+    # 2. RETRIEVAL (RAG Retriever)
+    st.markdown('<div class="sub-section-title">2. Retrieval (RAG Retriever): The Semantic Librarian</div>',
+                unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="responsibilities-box">
+            <strong>Design:</strong>
+            <ul>
+                <li>Use dense embeddings + vector store (FAISS, Milvus) + metadata filters.</li>
+                <li>Over-fetch (<span class="technical-term">K</span> larger) and let extractor prune irrelevant chunks.</li>
+                <li>Maintain retrieval score and source pointer for each chunk.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True
+    )
+    # Inject CSS
+    st.markdown("""
+    <style>
+    .feature-point {
+        color: white !important;
+        font-weight: 600;
+        font-size: 18px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-st.markdown('<div class="responsibilities-box"><strong>Function:</strong> The <span class="technical-term">Validator Agent</span> ensures all extracted parameters are physically plausible and logically consistent before execution.</div>', unsafe_allow_html=True)
+    # Use your HTML tag
+    st.markdown('<p class="feature-point">Technical Implementation:</p>', unsafe_allow_html=True)
 
-st.markdown('<p class="feature-point">Examples of Critical Validation Rules:</p>')
-st.markdown(
+    st.markdown(
+        """
+    - Uses dense embeddings + vector store (ChromaDB, or industry standards like FAISS/Milvus) + metadata filters.
+    - Augmented Fetching (<span class="technical-term">K-Overfetch</span>): Designed to over-fetch to maximize the probability of capturing critical data points.
+    - Auditability & Pointers: Maintains the retrieval score and source pointer (URI, page) for every chunk, enabling full traceability in the final report.
     """
-- Measured Depth (<span class="technical-term">MD</span>) $\ge$ True Vertical Depth (<span class="technical-term">TVD</span>).
-- Tubing outer diameter $<$ casing inner diameter - tolerance.
-- PVT densities in plausible ranges (oil: $\sim 600-1000 \text{ kg/m}^3$).
-- Perforations within casing interval.
-"""
-)
+    )
 
-st.markdown('<p class="feature-point">Behaviors:</p>')
-st.markdown(
+    st.markdown("---")
+
+    # 4. SANITY CHECKING & VALIDATION
+    st.markdown('<div class="sub-section-title">4. Sanity Checking & Validation: The Deterministic Rule Engine</div>',
+                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="responsibilities-box"><strong>Function:</strong> The <span class="technical-term">Validator Agent</span> ensures all extracted parameters are physically plausible and logically consistent before execution.</div>',
+        unsafe_allow_html=True)
+    st.markdown('<p class="feature-point">Examples of Critical Validation Rules:</p>', unsafe_allow_html=True)
+    st.markdown(
+        # Changed to explicit UL/LI list for better rendering
+        """
+        <ul>
+            <li><span style="color: white; font-weight: bold;">Measured Depth (MD) / TVD:</span> Measured Depth (<span class="technical-term">MD</span>) $\ge$ True Vertical Depth (<span class="technical-term">TVD</span>).</li>
+            <li><span style="color: white; font-weight: bold;">Tubing/Casing Integrity:</span> Tubing outer diameter $<$ casing inner diameter - tolerance.</li>
+            <li><span style="color: white; font-weight: bold;">Fluid Properties:</span> PVT densities in plausible ranges (oil: $\sim 600-1000 \text{ kg/m}^3$).</li>
+            <li><span style="color: white; font-weight: bold;">Completion Integrity:</span> Perforations within casing interval.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('<p class="feature-point">Behaviors:</p>', unsafe_allow_html=True)
+    st.markdown(
+        """
+    - **Auto-Correction:** Auto-correct low-risk errors (unit inference, OCR character fixes).
+    - **Human-in-the-loop:** For high-impact anomalies, present a user question and pause for confirmation.
     """
-- Auto-correct low-risk errors (unit inference, OCR character fixes).
-- For high-impact anomalies, present a user question and pause for confirmation (Human-in-the-loop).
-"""
-)
+    )
 
-st.markdown("---")
+    st.markdown("---")
 
-# ----------------------------------------------------------------------
-# 5. NODAL ANALYSIS ENGINE (Solver)
-# ----------------------------------------------------------------------
+    # 6. AGENTIC ORCHESTRATION & HUMAN-IN-THE-LOOP
+    st.markdown('<div class="sub-section-title">6. Agentic Orchestration & Control Layer</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="responsibilities-box"><strong>Architecture:</strong> The entire process is managed by an **Orchestrator Agent** that sequences specialized tasks, handles failures, and manages user interaction for critical decisions.</div>',
+        unsafe_allow_html=True)
+    st.markdown('<p class="feature-point">Agent Type Catalog:</p>', unsafe_allow_html=True)
+    st.markdown(
+        # Changed to explicit UL/LI list for better rendering
+        """
+        <ul>
+            <li><span style="color: white; font-weight: bold;">Orchestrator:</span> Sequences tasks and handles failures/timeouts.</li>
+            <li><span style="color: white; font-weight: bold;">Retriever agent:</span> Optimizes chunks to fetch.</li>
+            <li><span style="color: white; font-weight: bold;">Extractor agent:</span> LLM that outputs JSON.</li>
+            <li><span style="color: white; font-weight: bold;">Validator agent:</span> Deterministic rule engine.</li>
+            <li><span style="color: white; font-weight: bold;">Solver agent:</span> Numeric VLP/IPR solver.</li>
+            <li><span style="color: white; font-weight: bold;">Vision agent:</span> Parses images/tables using vision LLM + OCR.</li>
+            <li><span style="color: white; font-weight: bold;">UI agent:</span> Crafts clarifying questions for the user.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('<p class="feature-point">Operating Modes:</p>', unsafe_allow_html=True)
+    st.markdown(
+        # Changed to explicit UL/LI list for better rendering
+        """
+        <ul>
+            <li><span style="color: white; font-weight: bold;">Fully Automated Mode:</span> The system attempts auto-correction for all errors and records all assumptions and corrections in the final audit report.</li>
+            <li><span style="color: white; font-weight: bold;">Human-in-the-loop Mode:</span> The workflow is designed to **block and pause** whenever a high-impact anomaly (e.g., PI is zero or a major constraint is violated) is detected, requiring mandatory user confirmation before proceeding.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
 
-st.markdown('<div class="sub-section-title">5. Nodal Analysis Engine: The Numerical Solver Tool</div>', unsafe_allow_html=True)
-
-st.markdown('<div class="responsibilities-box"><strong>Core Task:</strong> This Python tool (the <span class="technical-term">Solver Agent</span>) is responsible for building and solving the fluid dynamics models to determine the stable operating point of the well.</div>', unsafe_allow_html=True)
-
-st.markdown('<p class="feature-point">Models Supported:</p>')
-st.markdown(
-    """
-- **IPR:** simple linear (PI), <span class="technical-term">Vogel</span>, <span class="technical-term">Fetkovich</span>, or fitted decline/IPR from history.
-- **VLP:** hydrostatic + friction + acceleration (Beggs & Brill or simplified Darcy-Weisbach).
-- **Numerical solver:** root-finding (bisection / Brent).
-"""
-)
-
-st.markdown('<p class="feature-point">Flow:</p>')
-st.markdown(
-    """
-- Build IPR from reservoir parameters or history.
-- Build VLP from well geometry and fluid PVT.
-- Solve for $\text{q}$ where $\text{P}_{\text{wf}}^{\text{IPR}}(\text{q}) == \text{P}_{\text{wf}}^{\text{VLP}}(\text{q})$.
-"""
-)
-
-st.markdown('<p class="feature-point">Uncertainty:</p>')
-st.markdown(
-    """
-- Optionally run Monte Carlo sweeps across uncertain inputs ($\text{PI}$, $\text{P}_{\text{r}}$, permeability).
-"""
-)
-
-st.markdown("---")
-
-# ----------------------------------------------------------------------
-# 6. AGENTIC ORCHESTRATION & HUMAN-IN-THE-LOOP
-# ----------------------------------------------------------------------
-
-st.markdown('<div class="sub-section-title">6. Agentic Orchestration & Control Layer</div>', unsafe_allow_html=True)
-
-st.markdown('<div class="responsibilities-box"><strong>Architecture:</strong> The entire process is managed by an **Orchestrator Agent** that sequences specialized tasks, handles failures, and manages user interaction for critical decisions.</div>', unsafe_allow_html=True)
-
-st.markdown('<p class="feature-point">Agent Type Catalog:</p>')
-st.markdown(
-    """
-- **Orchestrator:** Sequences tasks and handles failures/timeouts.
-- **Retriever agent:** Optimizes chunks to fetch.
-- **Extractor agent:** LLM that outputs JSON.
-- **Validator agent:** Deterministic rule engine.
-- **Solver agent:** Numeric VLP/IPR solver.
-- **Vision agent:** Parses images/tables using vision LLM + OCR.
-- **UI agent:** Crafts clarifying questions for the user.
-"""
-)
-
-st.markdown('<p class="feature-point">Operating Modes:</p>')
-st.markdown(
-    """
-- **Fully Automated Mode:** The system attempts auto-correction for all errors and records all assumptions and corrections in the final audit report.
-- **Human-in-the-loop Mode:** The workflow is designed to **block and pause** whenever a high-impact anomaly (e.g., PI is zero or a major constraint is violated) is detected, requiring mandatory user confirmation before proceeding.
-"""
-)
+st.markdown('<div style="clear:both;"></div>', unsafe_allow_html=True)  # Clear float for main content area
 
 st.write("---")
 
-st.markdown('</div>', unsafe_allow_html=True) # Close architecture-container div
+st.markdown('</div>', unsafe_allow_html=True)  # Close architecture-container div
 
 # ------------------------------------------------------------------------------
 # Downloadable artifacts and button handlers (safe)
