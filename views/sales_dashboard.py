@@ -794,65 +794,149 @@ if submit:
     st.info("Note: This is a toy calculation. Use the VLP pseudocode and real multiphase model for production-grade results.")
 
 st.write("---")
+import streamlit as st
 
-# ------------------------------------------------------------------------------
-# Observability, security, and developer notes
-# ------------------------------------------------------------------------------
-st.header("Observability, Security & Developer Roadmap")
+# Custom styles must be included if this file is run standalone, but assuming
+# it runs within the main app where the <style> block is already defined.
 
-st.markdown("""
-**Observability**
-- Keep an audit trail of: ingestion snapshot, chunks retrieved, extractor outputs, validation flags, user corrections, solver inputs/outputs.
-- Each audit record contains: timestamp, agent id, input snapshot, output snapshot, source pointers, confidence.
+st.markdown('<div class="architecture-container">', unsafe_allow_html=True)
 
-**Security**
-- Encrypt documents and vector indices at rest.
-- RBAC for accessing sensitive well data.
-- Strict JSON schema validation on extractor outputs to avoid downstream failures.
+st.markdown('<div class="section-header">Observability, Security & Developer Roadmap</div>', unsafe_allow_html=True)
+st.markdown("---")
 
-**Developer Roadmap (MVP -> Production)**
-1. MVP:
-   - Ingest + OCR + chunking
-   - Retriever + small index
-   - Instruction-tuned LLM for JSON extraction
-   - Deterministic validations
-   - Simplified nodal solver
-   - Basic UI for human confirmations
-2. Production:
-   - Robust multiphase VLP (mechanistic)
-   - Vision-first path with llava-phi3 for images
-   - Monte Carlo uncertainty & sensitivity analysis
-   - Orchestration (Temporal, Celery) for retries/timeouts
-   - Access control, logging & signed results
-""")
+# ----------------------------------------------------------------------
+# TWO COLUMN LAYOUT START
+# ----------------------------------------------------------------------
+
+col_left, col_right = st.columns(2)
+
+# ----------------------------------------------------------------------
+# COLUMN 1: OBSERVABILITY AND SECURITY
+# ----------------------------------------------------------------------
+
+with col_left:
+    # OBSERVABILITY
+    st.markdown('<div class="sub-section-title">1. Observability: The Audit Trail</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="responsibilities-box"><strong>Purpose:</strong> To maintain a comprehensive, auditable record of every system action and data transformation, ensuring reliability and debugging capability.</div>',
+        unsafe_allow_html=True)
+
+    st.markdown('<p class="feature-point">Key Audit Records Maintained:</p>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <ul>
+            <li><span style="color: white; font-weight: bold;">Ingestion Snapshot:</span> File hash and metadata for original document upload.</li>
+            <li><span style="color: white; font-weight: bold;">Retrieval Data:</span> Query vector, chunks retrieved, and semantic scores.</li>
+            <li><span style="color: white; font-weight: bold;">Extractor Outputs:</span> Raw JSON output from LLM before validation.</li>
+            <li><span style="color: white; font-weight: bold;">Validation Flags:</span> Detailed logs of all validation checks and rule violations.</li>
+            <li><span style="color: white; font-weight: bold;">User Corrections:</span> Records of user input during Human-in-the-Loop confirmation steps.</li>
+            <li><span style="color: white; font-weight: bold;">Solver I/O:</span> Inputs and outputs of the deterministic numerical models (VLP/IPR).</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+
+    st.markdown('<p class="feature-point">Audit Record Structure:</p>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        Every audit record contains: timestamp, agent ID, input snapshot, output snapshot, source pointers, and confidence metrics.
+        """
+    )
+    st.markdown("---")
+
+    # SECURITY
+    st.markdown('<div class="sub-section-title">2. Security: Data Integrity & Access Control</div>',
+                unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="responsibilities-box"><strong>Goal:</strong> To ensure all sensitive engineering and proprietary data remains protected throughout the RAG and analysis pipeline.</div>',
+        unsafe_allow_html=True)
+
+    st.markdown('<p class="feature-point">Core Security Measures:</p>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <ul>
+            <li><span style="color: white; font-weight: bold;">Data at Rest:</span> Encrypt documents and vector indices (<span class="technical-term">ChromaDB persistence layer</span>) at rest using industry-standard protocols.</li>
+            <li><span style="color: white; font-weight: bold;">Access Control:</span> Implement RBAC (Role-Based Access Control) for accessing sensitive well data and controlling query types.</li>
+            <li><span style="color: white; font-weight: bold;">Input Validation:</span> Enforce strict JSON schema validation on extractor outputs to prevent malicious injection or downstream calculation failures.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+
+# ----------------------------------------------------------------------
+# COLUMN 2: DEVELOPER ROADMAP
+# ----------------------------------------------------------------------
+
+with col_right:
+    # DEVELOPER ROADMAP
+    st.markdown('<div class="sub-section-title">3. Developer Roadmap: Phases of Deployment</div>',
+                unsafe_allow_html=True)
+
+    st.markdown('<p class="feature-point">MVP (Minimum Viable Product):</p>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <ul>
+            <li>Ingest + OCR + chunking.</li>
+            <li>Retriever + small vector index.</li>
+            <li>Instruction-tuned LLM for JSON extraction.</li>
+            <li>Deterministic validations (basic unit/plausibility checks).</li>
+            <li>Simplified nodal solver (linear IPR, simplified VLP).</li>
+            <li>Basic UI for human confirmations.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+
+    st.markdown('<p class="feature-point">Production-Grade System:</p>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <ul>
+            <li>Robust multiphase VLP (mechanistic models like <span class="technical-term">Beggs & Brill</span>).</li>
+            <li>Vision-first path integration with LLMs (<span class="technical-term">llava-phi3</span>) for schematics and tables.</li>
+            <li>Monte Carlo uncertainty & sensitivity analysis.</li>
+            <li>Orchestration using frameworks (Temporal, Celery) for retries and timeouts across agent chains.</li>
+            <li>Comprehensive Access Control, logging, and cryptographic signing of final results.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+
+st.markdown('<div style="clear:both;"></div>', unsafe_allow_html=True)
 
 st.write("---")
 
+st.markdown('</div>', unsafe_allow_html=True)  # Close architecture-container div
 # ------------------------------------------------------------------------------
 # Footer / assets image and final notes
 # ------------------------------------------------------------------------------
-colf1, colf2 = st.columns([1,2])
+
+# ----------------------------------------------------------------------
+# FOOTER CONTENT (Advanced Extraction & Notes)
+# ----------------------------------------------------------------------
+
+colf1, colf2 = st.columns([1, 2])
+
 with colf1:
     try:
+        # Assuming ssn.png is a diagram representing the workflow
         st.image("./assets/ssn.png", use_column_width=True)
     except Exception:
         st.info("Footer image not found at ./assets/ssn.png — replace or ignore.")
-with colf2:
-    st.markdown(
-        f"""
-**Document generated:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
 
-**Notes**
-- This Streamlit app is a detailed *blueprint and documentation* for engineers. It intentionally avoids contacting external model endpoints.
-- To move from blueprint -> working system, replace placeholder components with production model endpoints:
-  - Embedding model & vector DB (FAISS/Milvus)
-  - Instruction-tuned LLM (Llama3 or equivalent) for extraction & agents
-  - Vision model (llava-phi3) for image-table parsing
-  - Numerical solver backed by scientific libraries (numpy/scipy) or domain libraries.
-- If you want, click any Download button above to obtain schema, prompts, testcases, and pseudocode.
-"""
+with colf2:
+    st.markdown('<div class="sub-section-title" style="margin-top: 0;">Advanced Data Extraction & Scientific Methodology</div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <p class="footer-note">The Structured Extraction Agent (Section 3) is designed not just for simple key-value parsing, but for advanced data science tasks, employing:</p>
+        <ul>
+            <li><span style="color: white; font-weight: bold;">Conditional Random Fields (CRF):</span> Used in pre-processing to identify and label structured elements like headers, footers, and section breaks, enhancing contextual understanding before LLM processing.</li>
+            <li><span style="color: white; font-weight: bold;">Graph Neural Networks (GNNs):</span> Applied for complex table understanding, treating cells, rows, and columns as nodes and edges to infer relationships and ensure correct row/column alignment, especially after OCR introduces noise. </li>
+            <li><span style="color: white; font-weight: bold;">Latent Dirichlet Allocation (LDA):</span> Used for initial document topic modeling to ensure highly relevant chunks are prioritized, improving the signal-to-noise ratio during retrieval.</li>
+            <li><span style="color: white; font-weight: bold;">Contrastive Learning for Embeddings:</span> Used to fine-tune vector generation, maximizing the distance between dissimilar documents (e.g., geology reports vs. completion reports) while minimizing distance between highly relevant content, improving retrieval precision. </li>
+        </ul>
+        """, unsafe_allow_html=True
     )
-###############
+
+
+st.markdown('</div>', unsafe_allow_html=True) # Close architecture-container div
 
 
 # ----------------------
@@ -1142,55 +1226,276 @@ print(results)
 )
 
 st.markdown("---")
+import streamlit as st
 
-# Multi-Modal workflow explanation
-st.markdown("### **Multi-Modal AI Workflow Overview**")
+# Custom CSS for high contrast and modern look (assuming definitions from main file)
 st.markdown("""
-A modern agentic well-report system must handle *multiple forms of information*:
+<style>
+    /* Replicating key styles for standalone rendering */
+    .section-title-mm {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #1E90FF; /* Dodger Blue */
+        border-bottom: 4px solid #444444; 
+        padding-bottom: 5px;
+        margin-top: 30px;
+        margin-bottom: 20px;
+    }
+    .technical-term {
+        color: #FF4B4B; 
+        font-weight: 700;
+        font-style: italic;
+    }
+    # .feature-box {
+    #     background-color: #1a1a1a; /* Dark background for boxes */
+    #     border: 1px solid #444444;
+    #     border-radius: 8px;
+    #     padding: 15px;
+    #     min-height: 200px; /* Ensure visual stability in columns */
+    #     margin-bottom: 20px;
+    #     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    # }
+    # .feature-box strong {
+    #     color: #FFFFFF;
+    #     font-size: 1.2em;
+    #     display: block;
+    #     margin-bottom: 8px;
+    # }
+    # .feature-box p {
+    #     color: #E0E0E0; /* Light text */
+    #     line-height: 1.5;
+    #     font-size: 1.0rem;
+    # }
+    /* FIX for introductory text visibility/rendering */
+    .intro-paragraph {
+        color: #F0F0F0; 
+        margin-bottom: 20px; 
+        font-size:1.15rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-1. **Text (PDF/DOCX extracted text)**  
-   - OCR + layout detection → embedding → ChromaDB (or similar) → retriever.
 
-2. **Vision (scanned tables, schematics, images)**  
-   - Use llava-phi3 or vision LLM to parse tables, diagrams, and annotations → extract structured data.
+st.markdown('<div class="multi-modal-container">', unsafe_allow_html=True)
 
-3. **Hybrid reasoning**  
-   - Retrieval (text) + vision features (image table extraction) → unified extractor JSON.
+st.markdown('<div class="section-title-mm">Multi-Modal AI Workflow Overview</div>', unsafe_allow_html=True)
+st.markdown(
+    """
+    <p class="intro-paragraph">
+    A modern agentic well-report system must seamlessly handle and integrate multiple distinct forms of information 
+    to achieve reliable results. LocoChat achieves this through a structured four-stage fusion process.
+    </p>
+    """, unsafe_allow_html=True
+)
 
-4. **Validation + numeric simulation**  
-   - Deterministic checks (MD≥TVD, casing/tubing consistency) → VLP/IPR solver → production estimate.
+# ----------------------------------------------------------------------
+# FOUR-COLUMN GRID FOR WORKFLOW STAGES
+# ----------------------------------------------------------------------
 
-**Result:** A full multi-modal, verifiable well-report intelligence workflow.
-""")
+col_mm1, col_mm2, col_mm3, col_mm4 = st.columns(4)
+
+with col_mm1:
+    st.markdown('<div class="feature-box">', unsafe_allow_html=True)
+    st.markdown('<strong>1.  Unstructured Data Ingestion</strong>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <p>This is the base layer for knowledge. The system processes standard digital documents to extract core narrative and sequential data.</p>
+        <ul>
+            <li><strong>Input:</strong> <span class="technical-term">PDF</span>, DOCX (raw text).</li>
+            <li><strong>Process:</strong> OCR + layout detection $\\to$ smart chunking.</li>
+            <li><strong>Storage:</strong> Embedded and stored in the <span class="technical-term">ChromaDB</span> for retrieval.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_mm2:
+    st.markdown('<div class="feature-box">', unsafe_allow_html=True)
+    st.markdown('<strong>2. 👁 Vision & Structured Parsing</strong>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <p>Handling visual and scanned content, which often contains critical tables and schematics essential for engineering analysis. </p>
+        <ul>
+            <li><strong>Input:</strong> Scanned tables, schematics, annotations (PNG/JPEG).</li>
+            <li><strong>Tool:</strong> <span class="technical-term">llava-phi3</span> (Vision AG) extracts and translates visual data into structured JSON/CSV.</li>
+            <li><strong>Output:</strong> Structured data merged for later validation.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_mm3:
+    st.markdown('<div class="feature-box">', unsafe_allow_html=True)
+    st.markdown('<strong>3.  Hybrid Reasoning & Fusion</strong>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <p>The stage where information from diverse sources (Text, Vision, Excel) is unified by the Extractor Agent to complete the JSON parameter schema.</p>
+        <ul>
+            <li><strong>Process:</strong> Retriever (text context) + Vision features (image table extraction) are combined.</li>
+            <li><strong>Validation Goal:</strong> Ensure all fields (e.g., PI from text, Tubing ID from scanned schematic) are present in a single, unified object.</li>
+            <li><strong>Agent Role:</strong> <span class="technical-term-ai">Extractor LLM</span> handles the complex data merging and normalization.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_mm4:
+    st.markdown('<div class="feature-box">', unsafe_allow_html=True)
+    st.markdown('<strong>4.  Validation & Numerical Simulation</strong>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <p>The final layer of safety and computation, ensuring the output is mathematically sound and adheres to domain rules.</p>
+        <ul>
+            <li><strong>Check:</strong> Deterministic checks (MD $\ge$ TVD, casing/tubing consistency) are run by the Validator Agent.</li>
+            <li><strong>Tool:</strong> <span class="technical-term-ai">Solver Agent</span> uses validated inputs $\\to$ VLP/IPR models.</li>
+            <li><strong>Result:</strong> Production estimate and verifiable source audit log.</li>
+        </ul>
+        """, unsafe_allow_html=True
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('<p style="color:#F0F0F0; font-size:1.1rem; margin-top: 30px;"><strong>Result:</strong> A full multi-modal, verifiable well-report intelligence workflow is achieved, leading to trustworthy engineering outputs.</p>', unsafe_allow_html=True)
+
+st.markdown("---")
+import streamlit as st
+
+# Custom CSS for the specific section styling (Minimalist and high-contrast)
+st.markdown("""
+<style>
+    /* Styling for the new Agentic Principles Section */
+    .principles-section-title {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #1E90FF; /* Dodger Blue */
+        border-bottom: 4px solid #444444; 
+        padding-bottom: 5px;
+        margin-top: 30px;
+        margin-bottom: 20px;
+    }
+    .technical-term-ai {
+        color: #00CC00; /* Green highlight for AI components */
+        font-weight: 700;
+        font-style: italic;
+    }
+    .technical-term {
+        color: #FF4B4B; /* Streamlit Red */
+        font-weight: 700;
+        font-style: italic;
+    }
+    .principles-text {
+        color: #E0E0E0; /* Light gray text for visibility on dark background */
+        font-size: 1.05rem;
+        line-height: 1.6;
+        margin-bottom: 15px;
+    }
+    .principle-heading {
+        color: #FFFFFF; /* White for main bold headings */
+        font-size: 1.15em;
+        font-weight: 700;
+        margin-top: 15px;
+        margin-bottom: 5px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="principles-container">', unsafe_allow_html=True)
+
+st.markdown('<div class="principles-section-title">Agentic-AI Principles — Detailed & Explainable</div>',
+            unsafe_allow_html=True)
+
+# FIX: Ensure the introductory paragraph is processed by the browser as HTML
+st.markdown(
+    """
+    <p style="color:#F0F0F0; margin-bottom: 20px;">
+    The foundation of LocoChat’s reliability is its <strong>Agentic Architecture</strong> —
+    a system of specialized agents that reason, validate, and collaborate under an orchestrator
+    to deliver accurate, explainable outcomes.
+    </p>
+    """, unsafe_allow_html=True
+)
+
+# Initialize the two columns
+col_p1, col_p2 = st.columns(2)
+
+# --- COLUMN 1: Core Principles ---
+with col_p1:
+    st.markdown("### **Core Safety & Structure**", unsafe_allow_html=True)
+
+    st.markdown('<p class="principle-heading">Role Specialization & Modularity</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="principles-text">Involves dedicated agents for: Ingestion, Retrieval, Extractor, Validator, Vision, Solver, and UI agents. This compartmentalization ensures robust fault isolation and specialized domain expertise.</p>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<p class="principle-heading">Deterministic Safety & Trust</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="principles-text"><span class="technical-term-ai">Principle:</span> If uncertainty occurs, the system outputs <span class="technical-term">null</span> and requests human confirmation — never hallucinating numeric values.</p>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<p class="principle-heading">Chain-of-Thought Separation</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="principles-text"><span class="technical-term-ai">Process:</span> Internal reasoning is hidden; agents communicate using strict JSON/CSV formats for deterministic pipelines.</p>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<p class="principle-heading">Mandatory Auditability</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="principles-text"><span class="technical-term-ai">Record Keeping:</span> Every transformation is logged with sources, confidence, and validation outcomes.</p>',
+        unsafe_allow_html=True
+    )
+
+# --- COLUMN 2: Workflow & Control ---
+with col_p2:
+    st.markdown("### **Control & Integration**", unsafe_allow_html=True)
+
+    st.markdown('<p class="principle-heading">Dynamic Orchestration & Control</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="principles-text"><span class="technical-term-ai">The Planner:</span> The Orchestrator selects agents, manages retries, and applies sophisticated fallback logic.</p>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<p class="principle-heading">Multi-Model & Tool Integration</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="principles-text"><span class="technical-term-ai">The Stack:</span> Seamless collaboration between distinct models: <span class="technical-term">Llama3</span>, <span class="technical-term">Llava-Phi3</span>, <span class="technical-term">ChromaDB</span>, and physics solvers.</p>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<p class="principle-heading">Human-in-the-Loop Protocol</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="principles-text"><span class="technical-term-ai">Decision Point:</span> High-impact anomalies require human review; low-risk fixes can be auto-applied and logged.</p>',
+        unsafe_allow_html=True
+    )
 
 st.markdown("---")
 
-# Agentic-AI principles (detailed)
-st.markdown("### **Agentic-AI Principles — Detailed & Explainable**")
-st.markdown("""
-Agentic AI is a collection of specialized agents each performing a focused job and collaborating under an orchestrator.
+# --- PRACTICAL WORKFLOW SECTION ---
+st.markdown('<div style="margin-top: 20px;">', unsafe_allow_html=True)
+st.markdown(
+    '<p style="color:#F0F0F0; font-size:1.3rem; font-weight:700; margin-bottom:10px; border-bottom:2px solid #555;">Practical Agentic Workflow Example (Nodal Analysis)</p>',
+    unsafe_allow_html=True)
 
-**Core principles**
+st.markdown(
+    """
+    <ol style="color:#E0E0E0; padding-left:20px; line-height:1.6;">
+        <li><strong>Ingest & Index:</strong> PDF $\\to$ OCR $\\to$ Chunks stored in <span class="technical-term">ChromaDB</span>.</li>
+        <li><strong>Retrieve:</strong> Adaptive retriever locates top-K chunks containing key parameters.</li>
+        <li><strong>Extract & Structure:</strong> Extractor returns strict JSON schema.</li>
+        <li><strong>Validate:</strong> Validator runs domain rules.</li>
+        <li><strong>Vision Fusion:</strong> Vision agent extracts tables from schematics.</li>
+        <li><strong>Solve:</strong> Python solver computes $\text{Q}_{\text{sol}}$ and $\text{P}_{\text{BH}}$.</li>
+        <li><strong>Output:</strong> Synthesis Agent generates the final report; results + audit log.</li>
+    </ol>
+    """
+    , unsafe_allow_html=True)
 
-- **Role specialization**: Ingestion, Retrieval, Extractor, Validator, Vision, Solver, UI agents.
-- **Deterministic safety**: When uncertain, output `null`, flag, and ask human — never hallucinate critical numeric fields.
-- **Chain-of-thought separation**: Keep reasoning internal; outputs are structured/JSON for downstream processing.
-- **Auditability**: Every extraction includes source snippet + confidence + validation results.
-- **Orchestration**: Orchestrator decides which agent to call, retries, and fallback strategies.
-- **Multi-model integration**: Llama3 (text) + Llava-Phi3 (vision) + ChromaDB (retrieval) + physics solvers (VLP/IPR).
-- **Human-in-the-loop**: High-impact anomalies require confirmation; low-risk fixes can be auto-applied and logged.
-
-**Practical workflow example**
-1. Ingest PDF -> OCR -> chunks in vector DB.  
-2. Retriever finds top-K chunks.  
-3. Extractor LLM returns strict JSON with field pointers.  
-4. Validator runs domain rules — flags anomalies.  
-5. Vision agent extracts table values from images, merged into JSON.  
-6. Solver computes nodal solution; results + audit log returned to user.
-""")
+st.markdown(
+    '<p style="color:#F0F0F0; margin-top: 15px;">The Orchestrator ensures everything remains validated, mathematically grounded, and explainable.</p>'
+    , unsafe_allow_html=True)
 
 st.markdown("---")
-
+st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 # ---------------------------
 # Architecture diagrams (ASCII)
 # ---------------------------
@@ -1272,7 +1577,6 @@ with st.container():
     )
     st.markdown("---")
 
-
 st.markdown('<div class="section-title">🔍 1. Structured Data Retrieval (The Foundation)</div>', unsafe_allow_html=True)
 
 col_a, col_b = st.columns([1, 1.5])
@@ -1281,39 +1585,49 @@ with col_a:
     st.markdown('<p class="feature-point">a. Base Text Extraction</p>', unsafe_allow_html=True)
     st.markdown(
         """
-        -   **Mechanism:** Utilizes robust loaders like <span class="technical-term">PyMuPDFLoader</span> for raw text extraction.
-        -   **Purpose:** Captures headers, operational summaries, geological descriptions, and general narrative text.
-        -   **Output:** The fastest, cleanest layer of extraction, forming the prose backbone of the knowledge base.
-        """
+        <ul>
+            <li><b>Mechanism:</b> Utilizes robust loaders like <span class="technical-term">PyMuPDFLoader</span> for raw text extraction.</li>
+            <li><b>Purpose:</b> Captures headers, operational summaries, geological descriptions, and general narrative text.</li>
+            <li><b>Output:</b> The fastest, cleanest layer of extraction, forming the prose backbone of the knowledge base.</li>
+        </ul>
+        """,
+        unsafe_allow_html=True
     )
 
 with col_b:
     st.markdown('<p class="feature-point">b. High-Fidelity Table Extraction</p>', unsafe_allow_html=True)
     st.markdown(
         """
-        Engineering reports are data-dense; losing table structure means losing critical parameters. 
-        -   **Primary Tools:** Sequential utilization of <span class="technical-term">Camelot</span> (lattice and stream modes) and <span class="technical-term">pdfplumber</span>.
-        -   **Output Formats:** Tables are converted into three formats for optimal retrieval and computation: **Markdown**, **CSV** (stored in chunk metadata), and a fully structured LangChain <span class="technical-term">Document()</span> object.
-        -   **Benefit:** Enables direct extraction of numerical values (e.g., casing sizes, pump efficiency points) required for upstream nodal analysis.
-        """
+        Engineering reports are data-dense; losing table structure means losing critical parameters.
+        <ul>
+            <li><b>Primary Tools:</b> Sequential utilization of <span class="technical-term">Camelot</span> (lattice/stream) and <span class="technical-term">pdfplumber</span>.</li>
+            <li><b>Output Formats:</b> Markdown, CSV (stored in metadata), and structured LangChain <span class="technical-term">Document()</span>.</li>
+            <li><b>Benefit:</b> Enables extraction of numerical values like casing sizes or pump efficiency points.</li>
+        </ul>
+        """,
+        unsafe_allow_html=True
     )
+
 st.markdown("---")
 
 st.markdown('<div class="section-title">🖨️ 2. Resilient OCR Pipeline (Fault-Tolerant Layer)</div>', unsafe_allow_html=True)
 st.markdown(
     """
-    To handle mission-critical, partially corrupted, or scanned oilfield reports, we deploy a robust, page-isolated OCR system:
-    """
+    To handle mission-critical, partially corrupted, or scanned reports, we deploy a robust, page-isolated OCR system:
+    """,
+    unsafe_allow_html=True
 )
 st.markdown(
     """
     <ul class="detail-list">
-        <li><b>Rasterization via PyMuPDF:</b> Each PDF page is converted into a high-resolution image buffer (defaulting to 200 DPI). </li>
-        <li><b>OCR via Tesseract:</b> Text is read from the raster images, capturing content from signatures, handwritten notes, faint text, and stamps.</li>
-        <li><b>Robust Per-Page Error Isolation:</b> This is mission-critical. The code implements mandatory <code>try/except</code> blocks per page and validates Pixmap byte buffers, ensuring a corrupted page does not halt the entire document processing workflow.</li>
+        <li><b>Rasterization via PyMuPDF:</b> Converts pages into high-resolution (200 DPI) images.</li>
+        <li><b>OCR via Tesseract:</b> Extracts text including signatures, handwritten notes, faint markings.</li>
+        <li><b>Error Isolation:</b> Per-page <code>try/except</code> blocks ensure corrupted pages never stop processing.</li>
     </ul>
-    """, unsafe_allow_html=True
+    """,
+    unsafe_allow_html=True
 )
+
 st.markdown("---")
 
 st.markdown('<div class="section-title">📊 3. Structured Data and Vision Pipelines</div>', unsafe_allow_html=True)
@@ -1324,23 +1638,30 @@ with col_c:
     st.markdown('<p class="feature-point">Excel (XLS/XLSX) Processing</p>', unsafe_allow_html=True)
     st.markdown(
         """
-        -   **Full Sheet Integration:** Reads and processes **all sheets** within a workbook.
-        -   **RAG Optimization:** Converts sheets into Markdown/CSV formats, ensuring data structure is preserved.
-        -   **Descriptive Statistics:** Automatically computes and indexes descriptive stats (mean, min, max, std) for numeric columns, providing the LLM with immediate context on data range and distribution.
-        """
+        <ul>
+            <li><b>Full Sheet Integration:</b> Reads and processes all sheets in a workbook.</li>
+            <li><b>RAG Optimization:</b> Preserves structure via Markdown/CSV conversion.</li>
+            <li><b>Statistics:</b> Automatically calculates mean, min, max, std for numeric columns.</li>
+        </ul>
+        """,
+        unsafe_allow_html=True
     )
+
 with col_d:
     st.markdown('<p class="feature-point">Image-Based Extraction (Llava-Phi3 Vision)</p>', unsafe_allow_html=True)
     st.markdown(
         """
-        For interpreting complex visual documents (schematics, diagrams): [Image of well completion schematic]
-        -   **Ollama Vision Model Call:** The system uses the <span class="technical-term">Llava-Phi3</span> multimodal model.
-        -   **Multimodal Prompting:** Extracts the **Description** of the diagram, **OCR text** from labels, **reconstructed tables**, and detects spatial relationships (shapes, curves).
-        -   **Universal Document Loader:** The <span class="technical-term">load_documents()</span> function intelligently routes PNG/JPG files directly to this Vision pipeline.
-        """
+        For complex schematics or diagrams:
+        <ul>
+            <li><b>Vision Model:</b> Uses <span class="technical-term">Llava-Phi3</span>.</li>
+            <li><b>Multimodal Output:</b> Diagram descriptions, OCR labels, reconstructed tables, spatial relationships.</li>
+            <li><b>Smart Routing:</b> <span class="technical-term">load_documents()</span> automatically sends images to this pipeline.</li>
+        </ul>
+        """,
+        unsafe_allow_html=True
     )
-st.markdown("---")
 
+st.markdown("---")
 
 st.markdown('<div class="section-title">🧩 4. Adaptive Chunking & Indexing for RAG Accuracy</div>', unsafe_allow_html=True)
 
@@ -1350,53 +1671,73 @@ with col_e:
     st.markdown('<p class="feature-point">Adaptive Document Chunking</p>', unsafe_allow_html=True)
     st.markdown(
         """
-        To maximize retrieval accuracy, we employ **two distinct splitter profiles**:
-        -   **Text Splitter (2000 Chars):** Used for long-form narratives and summaries, maintaining sufficient context for prose reasoning.
-        -   **Table Splitter (1200 Chars):** Used for structured content. This smaller, focused size preserves the semantic coherence of row groupings and prevents breaking critical table structure.
-        """
+        <ul>
+            <li><b>Text Splitter (2000 chars):</b> For narrative sections.</li>
+            <li><b>Table Splitter (1200 chars):</b> For structured data without breaking semantic rows.</li>
+        </ul>
+        """,
+        unsafe_allow_html=True
     )
+
 with col_f:
     st.markdown('<p class="feature-point">ChromaDB Indexing & Vector Embeddings</p>', unsafe_allow_html=True)
     st.markdown(
         """
-        -   **Vector Storage:** The processed chunks are embedded using <span class="technical-term">OllamaEmbeddings</span> (Llama3) and stored in <span class="technical-term">ChromaDB</span>.
-        -   **Rich Metadata:** Documents are indexed with **all** extracted metadata (CSV, stats, page numbers). This is vital because the Retrieval Agent can filter or retrieve specific content types (e.g., "give me all chunks where `content_type` is 'table'").
-        -   **Source Traceability:** This forms the crucial **Source Rendering Layer**, enabling full auditability and grounding against hallucination.
-        """
+        <ul>
+            <li><b>Vector Storage:</b> Chunks are embedded using 
+                <span class="technical-term">OllamaEmbeddings</span> (Llama3)
+                and stored in <span class="technical-term">ChromaDB</span>.
+            </li>
+            <li><b>Rich Metadata:</b> All extracted metadata (CSV, stats, page numbers) is preserved.</li>
+            <li><b>Traceability:</b> Enables auditability and prevents hallucinations.</li>
+        </ul>
+        """,
+        unsafe_allow_html=True
     )
+
 st.markdown("---")
 
 st.markdown('<div class="section-title">📈 5. Post-Retrieval Actions & Auditability</div>', unsafe_allow_html=True)
 
 col_g, col_h = st.columns(2)
+
 with col_g:
     st.markdown('<p class="feature-point">Auto-Plotting from Extracted Tables</p>', unsafe_allow_html=True)
     st.markdown(
         """
-        The system includes a proactive analysis feature:
-        -   Upon successful retrieval of a table, the system reads the embedded **CSV metadata**.
-        -   It automatically plots numerical columns using <span class="technical-term">matplotlib</span> / <span class="technical-term">pandas</span>.
-        -   **Use Case:** Instantly visualizes pump curves, pressure-depth relationships, or well trajectory deviations (TVD/MD plots) without requiring a specific user plot request.
-        """
+        <ul>
+            <li>Automatically reads embedded CSV metadata.</li>
+            <li>Plots numerical columns using <span class="technical-term">matplotlib</span> / <span class="technical-term">pandas</span>.</li>
+            <li>Useful for pump curves, pressure-depth relationships, or trajectory plots.</li>
+        </ul>
+        """,
+        unsafe_allow_html=True
     )
+
 with col_h:
     st.markdown('<p class="feature-point">Source Rendering & Transparency</p>', unsafe_allow_html=True)
     st.markdown(
         """
-        -   **Auditability:** Every retrieved chunk is immediately shown to the user via an expandable section.
-        -   **Transparency:** Full metadata (source file, page, content type) is displayed clearly.
-        -   This prevents LLM hallucination by visually demonstrating the **evidence** the LLM used to construct the final answer.
-        """
+        <ul>
+            <li><b>Auditability:</b> Retrieved chunks are shown immediately.</li>
+            <li><b>Transparency:</b> Includes file name, page, content type, and metadata.</li>
+        </ul>
+        """,
+        unsafe_allow_html=True
     )
 
 st.markdown("---")
+
 st.markdown('<div class="section-title">🏗️ End-to-End Architecture Outcome</div>', unsafe_allow_html=True)
 st.markdown(
     """
-    This sophisticated ingestion pipeline forms the validated foundation required for the **agent-orchestrated nodal analysis solver**. It guarantees multi-format document support, reliable OCR/Vision fallback, full data transparency, and provides the structured, validated inputs needed to generate engineering-grade outputs.
-    """
+    This validated ingestion pipeline supports the agent-orchestrated nodal analysis solver by ensuring complete data fidelity, OCR/Vision fallback, and transparent retrieval for engineering-grade outputs.
+    """,
+    unsafe_allow_html=True
 )
+
 st.write("---")
+
 
 # ---------------------------
 # Merged-file generator — creates a full streamlit_app_merged.py for download
