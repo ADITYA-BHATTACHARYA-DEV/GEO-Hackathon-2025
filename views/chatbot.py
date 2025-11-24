@@ -143,8 +143,7 @@ def save_response_to_pdf(
       - Vertical SPE-style tables (Option A)
       - Dark-gray header, light-gray body
       - Nodal plot insertion
-      - Full Unicode-safe text handling
-      - Fixes FPDF crash: "'int' object has no attribute 'upper'"
+      - Full Unicode-safe text handling (uses DejaVuSans.ttf)
     """
 
     # -----------------------------
@@ -153,6 +152,24 @@ def save_response_to_pdf(
     from fpdf import FPDF
     import os
     from datetime import datetime
+    import urllib.request
+
+    # -----------------------------
+    # Ensure font exists (DejaVuSans)
+    # -----------------------------
+    FONT_DIR = "assets/fonts"
+    FONT_PATH = os.path.join(FONT_DIR, "DejaVuSans.ttf")
+    if not os.path.exists(FONT_PATH):
+        try:
+            os.makedirs(FONT_DIR, exist_ok=True)
+            # attempt to download DejaVuSans from the official repo raw link
+            urllib.request.urlretrieve(
+                "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
+                FONT_PATH
+            )
+        except Exception:
+            # If download fails, continue — user must ensure a Unicode TTF is present.
+            pass
 
     # -----------------------------
     # Safe text conversion (CRITICAL)
@@ -171,6 +188,10 @@ def save_response_to_pdf(
     # -----------------------------
     def _safe_multicell(pdf_obj, w, h, txt, max_len=3000):
         txt = s(txt)
+        # Replace a few common problematic unicode characters with safe equivalents
+        # to avoid rare font glyph issues (DejaVu handles most, but this is defensive).
+        txt = txt.replace("\u2010", "-").replace("\u2011", "-").replace("\u2012", "-")
+        txt = txt.replace("\u2013", "-").replace("\u2014", "-")
         if len(txt) > max_len:
             txt = txt[:max_len] + "..."
         pdf_obj.multi_cell(w, h, txt)
@@ -181,13 +202,33 @@ def save_response_to_pdf(
     class _PEFPDF(FPDF):
         def footer(self):
             self.set_y(-12)
-            self.set_font("Arial", "I", 8)
+            # Use DejaVu for footer (Unicode-safe)
+            try:
+                self.set_font("DejaVu", "I", 8)
+            except Exception:
+                self.set_font("Arial", "I", 8)
             self.set_text_color(120, 120, 120)
             self.cell(0, 10, f"Page {self.page_no()}", align="C")
 
     pdf = _PEFPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
+
+    # -----------------------------
+    # Register and set Unicode font
+    # -----------------------------
+    try:
+        if os.path.exists(FONT_PATH):
+            pdf.add_font("DejaVu", "", FONT_PATH, uni=True)
+            pdf.add_font("DejaVu", "B", FONT_PATH, uni=True)
+            pdf.add_font("DejaVu", "I", FONT_PATH, uni=True)
+            pdf.set_font("DejaVu", "", 12)
+        else:
+            # fallback to default if DejaVu not found
+            pdf.set_font("Arial", "", 12)
+    except Exception:
+        # if font registration fails, fallback gracefully
+        pdf.set_font("Arial", "", 12)
 
     # -----------------------------
     # SPE Colors
@@ -201,7 +242,10 @@ def save_response_to_pdf(
     # -----------------------------
     def draw_heading(title):
         pdf.ln(6)
-        pdf.set_font("Arial", "B", 14)
+        try:
+            pdf.set_font("DejaVu", "B", 14)
+        except Exception:
+            pdf.set_font("Arial", "B", 14)
         pdf.set_text_color(20, 20, 20)
         pdf.cell(0, 8, s(title), ln=True, align="L")
         pdf.ln(2)
@@ -221,13 +265,19 @@ def save_response_to_pdf(
         # ----------------- Header row -----------------
         pdf.set_fill_color(*HEADER_GRAY)
         pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", "B", 10)
+        try:
+            pdf.set_font("DejaVu", "B", 10)
+        except Exception:
+            pdf.set_font("Arial", "B", 10)
         pdf.cell(0, 8, s(title), ln=True, align="C", fill=True)
 
         # ----------------- Body rows -----------------
         pdf.set_fill_color(*BODY_GRAY)
         pdf.set_text_color(*TEXT_BLACK)
-        pdf.set_font("Arial", "", 9)
+        try:
+            pdf.set_font("DejaVu", "", 9)
+        except Exception:
+            pdf.set_font("Arial", "", 9)
 
         col1_w = (pdf.w - pdf.l_margin - pdf.r_margin) * 0.40
         col2_w = (pdf.w - pdf.l_margin - pdf.r_margin) * 0.60
@@ -241,12 +291,18 @@ def save_response_to_pdf(
     # -----------------------------
     # COVER PAGE
     # -----------------------------
-    pdf.set_font("Arial", "B", 20)
+    try:
+        pdf.set_font("DejaVu", "B", 20)
+    except Exception:
+        pdf.set_font("Arial", "B", 20)
     pdf.set_text_color(10, 60, 150)
     pdf.cell(0, 12, "Nodal Analysis - Engineering Report", ln=True)
 
     pdf.ln(2)
-    pdf.set_font("Arial", "", 10)
+    try:
+        pdf.set_font("DejaVu", "", 10)
+    except Exception:
+        pdf.set_font("Arial", "", 10)
     pdf.set_text_color(*TEXT_BLACK)
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     pdf.cell(0, 6, s(f"Generated: {ts}"), ln=True)
@@ -263,7 +319,10 @@ def save_response_to_pdf(
     # I. Summary
     # -----------------------------
     draw_heading("I. Summary of Solution")
-    pdf.set_font("Arial", "", 11)
+    try:
+        pdf.set_font("DejaVu", "", 11)
+    except Exception:
+        pdf.set_font("Arial", "", 11)
     _safe_multicell(pdf, 0, 5, answer_text)
     pdf.ln(6)
 
@@ -309,13 +368,19 @@ def save_response_to_pdf(
         meta = getattr(doc, "metadata", {}) or {}
 
         pdf.set_fill_color(220, 220, 220)
-        pdf.set_font("Arial", "B", 9)
+        try:
+            pdf.set_font("DejaVu", "B", 9)
+        except Exception:
+            pdf.set_font("Arial", "B", 9)
         pdf.set_text_color(*TEXT_BLACK)
 
         header_text = f"Source {i}: {meta.get('source','N/A')} | Page: {meta.get('page','N/A')}"
         pdf.cell(0, 7, s(header_text), ln=1, fill=True)
 
-        pdf.set_font("Arial", "", 8)
+        try:
+            pdf.set_font("DejaVu", "", 8)
+        except Exception:
+            pdf.set_font("Arial", "", 8)
         preview = getattr(doc, "page_content", "")
         _safe_multicell(pdf, 0, 4, preview)
         pdf.ln(2)
@@ -330,8 +395,6 @@ def save_response_to_pdf(
     pdf.output(filename)
 
     return filename
-
-
 
 
 # def save_response_to_pdf(answer_text, source_docs, filename="output.pdf", user_query=None):
@@ -2147,8 +2210,11 @@ if selected_new == "Summary Generation":
 # ----------------------------
 # Option 2: Nodal Analysis Calculation
 # ----------------------------
-# ----------------------------
 # Option 2: Nodal Analysis Calculation
+# ----------------------------
+# Assuming this code is within your main application script where 'selected_new' is defined.
+
+# The code for Option 2: Nodal Analysis Calculation
 # ----------------------------
 elif selected_new == "Nodal Analysis Calculation":
     import matplotlib.pyplot as plt
@@ -2232,18 +2298,46 @@ elif selected_new == "Nodal Analysis Calculation":
         params, flow_min=flow_min, flow_max=flow_max, n_points=200, tolerance_bar=3.0
     )
 
+    # ======================================================
+    # CRITICAL FIX: Save results and user-modified parameters to session state
+    # ======================================================
+    st.session_state['nodal_params'] = params
+    st.session_state['nodal_results'] = {
+        "sol_flow": sol_flow,
+        "sol_pbh": sol_pbh,
+        "sol_head": sol_head,
+        "flows": flows,
+        "p_vlp": p_vlp,
+        "p_ipr": p_ipr
+    }
+    # ======================================================
+
+    # ----------------------------------------------------
+    # FIX: Prepare safe formatted strings for display and PDF export
+    # ----------------------------------------------------
+    sol_flow_str = f"{sol_flow:.2f}" if sol_flow is not None else "N/A"
+    sol_pbh_str = f"{sol_pbh:.2f}" if sol_pbh is not None else "N/A"
+    sol_head_str = f"{sol_head:.1f}" if sol_head is not None else "N/A"
+    # ----------------------------------------------------
+
     # 4) Display results
     st.subheader("Results")
     if sol_flow:
         st.success(
             f"Operating point found:\n"
-            f"- Flowrate: {sol_flow:.2f} m3/hr\n"
-            f"- Bottomhole pressure (BHP): {sol_pbh:.2f} bar\n"
-            f"- Pump head: {sol_head:.1f} m" if sol_head is not None else
-            f"- Flowrate: {sol_flow:.2f} m3/hr\n- BHP: {sol_pbh:.2f} bar\n- Pump head: (not available)"
+            # Use safe strings here for display
+            f"- Flowrate: {sol_flow_str} m3/hr\n"
+            f"- Bottomhole pressure (BHP): {sol_pbh_str} bar\n"
+            f"- Pump head: {sol_head_str} m"
         )
     else:
-        st.error("No solution found with current settings. Consider adjusting PI, pump curve, or trajectory.")
+        # Provide specific guidance to the user on what to change
+        st.error(
+            "❌ No solution found with current settings. "
+            "To find an intersection, try adjusting the parameters below:\n\n"
+            "1. **Increase PI** (Productivity Index) to raise the IPR curve.\n"
+            "2. **Increase ID** (Inner Diameter) in the Well Trajectory table to lower the VLP curve."
+        )
 
     # 5) Plot
     fig, ax = plt.subplots()
@@ -2257,8 +2351,12 @@ elif selected_new == "Nodal Analysis Calculation":
     ax.grid(True)
     st.pyplot(fig)
 
+    # Close the plot figure to free up memory
+    plt.close(fig)
+
     # 6) Optional: export a summary PDF
     if st.button("Export nodal analysis to PDF"):
+        # Construct a clean summary string using safe formatted variables
         summary = (
             f"Nodal Analysis Summary\n\n"
             f"Density: {rho} kg/m3 | Viscosity: {mu} Pa.s | Roughness: {roughness} m\n"
@@ -2266,19 +2364,15 @@ elif selected_new == "Nodal Analysis Calculation":
             f"ESP depth: {esp_depth} m\n\n"
             f"Pump curve points: {len(pump_curve['flow'])}\n"
             f"Trajectory segments: {len(trajectory) - 1}\n\n"
-            f"Operating point: "
-            f"{'Q=' + f'{sol_flow:.2f} m3/hr, ' if sol_flow else ''}"
-            f"{'BHP=' + f'{sol_pbh:.2f} bar, ' if sol_pbh else ''}"
-            f"{'Head=' + f'{sol_head:.1f} m' if sol_head is not None else ''}"
+            f"Operating point: Q={sol_flow_str} m3/hr, BHP={sol_pbh_str} bar, Head={sol_head_str} m"
         )
         pdf_file = f"nodal_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         save_response_to_pdf(summary, source_docs, filename=pdf_file, user_query="Nodal Analysis")
         st.success(f"PDF saved: {pdf_file}")
 
 
-############### 3 Nodal Analysis
-# In your Streamlit app:
-############### 3 Nodal Analysis Results
+# The code for Option 3: Nodal Analysis Results
+# ----------------------------
 elif selected_new == "Nodal Analysis Results":
     import matplotlib.pyplot as plt
     import pandas as pd
@@ -2293,40 +2387,70 @@ elif selected_new == "Nodal Analysis Results":
         st.warning("Please upload and process a document in the 'Home' tab first to initialize the analysis system.")
         st.stop()
 
-    # 2. Retrieve docs for nodal analysis parameters
-    parameter_query = "reservoir pressure, wellhead pressure, PI, ESP depth, density, viscosity, roughness, pump curve table, well trajectory table"
-    source_docs = []
-    try:
-        retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 6})
-        source_docs = retriever.invoke(parameter_query)
-    except Exception as e:
-        st.error(f"Error retrieving documents for analysis: {e}")
+    # ======================================================
+    # CRITICAL FIX: Check if user-run calculation is in state
+    # ======================================================
+    if 'nodal_params' in st.session_state and 'nodal_results' in st.session_state:
+        st.success("Displaying results from the 'Nodal Analysis Calculation' page.")
+        params = st.session_state['nodal_params']
+        results = st.session_state['nodal_results']
+        # Source docs cannot be reliably stored, so we clear them to avoid crashing PDF export logic if source_docs is expected
         source_docs = []
+    else:
+        st.warning("No interactive calculation found. Running analysis based on RAG parameters/defaults.")
 
-    # 3–4. Extract + validate parameters
-    params = get_parameters_from_rag(source_docs)
+        # 2. Retrieve docs for nodal analysis parameters (Fallback/RAG path)
+        parameter_query = "reservoir pressure, wellhead pressure, PI, ESP depth, density, viscosity, roughness, pump curve table, well trajectory table"
+        source_docs = []
+        try:
+            retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 6})
+            source_docs = retriever.invoke(parameter_query)
+        except Exception as e:
+            st.error(f"Error retrieving documents for analysis: {e}")
+            source_docs = []
 
-    # 5. Compute nodal analysis
-    # Rely on defaults defined globally if specific values weren't retrieved/extracted
-    sol_flow, sol_pbh, sol_head, flows, p_vlp, p_ipr = run_nodal_analysis(
-        params, flow_min=1.0, flow_max=400.0, n_points=200, tolerance_bar=3.0
-    )
-    results = {
-        "sol_flow": sol_flow, "sol_pbh": sol_pbh, "sol_head": sol_head,
-        "flows": flows, "p_vlp": p_vlp, "p_ipr": p_ipr
-    }
+        # 3–4. Extract + validate parameters
+        params = get_parameters_from_rag(source_docs)
+
+        # 5. Compute nodal analysis
+        sol_flow, sol_pbh, sol_head, flows, p_vlp, p_ipr = run_nodal_analysis(
+            params, flow_min=1.0, flow_max=400.0, n_points=200, tolerance_bar=3.0
+        )
+        results = {
+            "sol_flow": sol_flow, "sol_pbh": sol_pbh, "sol_head": sol_head,
+            "flows": flows, "p_vlp": p_vlp, "p_ipr": p_ipr
+        }
+
+    # ======================================================
+    # END CRITICAL FIX
+    # ======================================================
+
+    # ----------------------------------------------------
+    # FIX: Prepare safe formatted strings for all outputs
+    # ----------------------------------------------------
+    sol_flow = results.get("sol_flow")
+    sol_pbh = results.get("sol_pbh")
+    sol_head = results.get("sol_head")
+
+    sol_flow_str = f"{sol_flow:.2f}" if sol_flow is not None else "N/A"
+    sol_pbh_str = f"{sol_pbh:.2f}" if sol_pbh is not None else "N/A"
+    sol_head_str = f"{sol_head:.1f}" if sol_head is not None else "N/A"
+    # ----------------------------------------------------
 
     # ----------------------------------------------------
     ## 📝 Results Summary Generation
     # ----------------------------------------------------
-
     summary_text = "Analysis complete. Data points extracted and calculation performed."
 
-    if source_docs:
+    # Skip LLM call if no source_docs are available from the RAG retrieval pathway
+    # The condition is now based on whether we were able to run RAG (source_docs is non-empty) OR if we have valid results.
+    if sol_flow is not None or source_docs:
+
+        # Use the safely formatted strings in the LLM prompt
         summary_query = f"""
         Generate a concise, technical paragraph summary (5-8 sentences) for the Nodal Analysis. 
         Use only the context provided by the retrieved sources (tables/text). 
-        Mention the key operating point found by the calculation: Q={results['sol_flow']:.2f} m³/hr, BHP={results['sol_pbh']:.2f} bar, Head={results['sol_head']:.1f} m (if available).
+        Mention the key operating point found by the calculation: Q={sol_flow_str} m³/hr, BHP={sol_pbh_str} bar, Head={sol_head_str} m (if available).
         Also, quote the most critical static parameter values from the source documents (e.g., Reservoir Pressure, PI, ESP Depth).
         """
         with st.spinner("Generating analytical summary from RAG context..."):
@@ -2347,12 +2471,12 @@ elif selected_new == "Nodal Analysis Results":
     col_op, col_err = st.columns([2, 3])
     with col_op:
         st.markdown("### Operating Point")
-        if results["sol_flow"]:
+        if sol_flow:
+            # Use safe formatted strings in the UI display
             st.success(
-                f"**Flowrate (Q):** {results['sol_flow']:.2f} m³/hr\n\n"
-                f"**Bottomhole Pressure (BHP):** {results['sol_pbh']:.2f} bar\n\n"
-                f"**Pump Head:** {results['sol_head']:.1f} m" if results['sol_head'] is not None else
-                f"**Bottomhole Pressure (BHP):** {results['sol_pbh']:.2f} bar"
+                f"**Flowrate (Q):** {sol_flow_str} m³/hr\n\n"
+                f"**Bottomhole Pressure (BHP):** {sol_pbh_str} bar\n\n"
+                f"**Pump Head:** {sol_head_str} m"
             )
         else:
             st.error("❌ No stable operating point found within tolerance (±3.0 bar).")
@@ -2402,10 +2526,10 @@ elif selected_new == "Nodal Analysis Results":
     ax.plot(results["flows"], results["p_ipr"], label="IPR (Inflow Performance Relationship)", color='green',
             linewidth=2)
 
-    if results["sol_flow"]:
-        ax.scatter(results["sol_flow"], results["sol_pbh"], color="red", s=100, zorder=5, label="Operating Point")
-        ax.axvline(results["sol_flow"], color='red', linestyle='--', linewidth=0.5)
-        ax.axhline(results["sol_pbh"], color='red', linestyle='--', linewidth=0.5)
+    if sol_flow:
+        ax.scatter(sol_flow, sol_pbh, color="red", s=100, zorder=5, label="Operating Point")
+        ax.axvline(sol_flow, color='red', linestyle='--', linewidth=0.5)
+        ax.axhline(sol_pbh, color='red', linestyle='--', linewidth=0.5)
 
     ax.set_xlabel("Flowrate [m³/hr]", fontsize=12)
     ax.set_ylabel("Pressure [bar]", fontsize=12)
@@ -2413,6 +2537,7 @@ elif selected_new == "Nodal Analysis Results":
     ax.legend(fontsize=10)
     ax.grid(True, linestyle=':', alpha=0.6)
     st.pyplot(fig)
+    plt.close(fig)  # Close figure to free memory
 
     st.markdown("---")
 
@@ -2427,12 +2552,12 @@ elif selected_new == "Nodal Analysis Results":
 
         try:
             # ----------------------------------------------------
-            # Build Operating Point Table
+            # Build Operating Point Table (using safe strings)
             # ----------------------------------------------------
             op_table = {
-                "Flowrate (m³/hr)": f"{results['sol_flow']:.2f}",
-                "Bottomhole Pressure (bar)": f"{results['sol_pbh']:.2f}",
-                "Pump Head (m)": f"{results['sol_head']:.1f}",
+                "Flowrate (m³/hr)": sol_flow_str,
+                "Bottomhole Pressure (bar)": sol_pbh_str,
+                "Pump Head (m)": sol_head_str,
             }
 
             # ----------------------------------------------------
@@ -2443,9 +2568,9 @@ elif selected_new == "Nodal Analysis Results":
                 "Wellhead Pressure (bar)": params.get("wellhead_pressure", "-"),
                 "Productivity Index (m³/hr/bar)": params.get("PI", "-"),
                 "ESP Depth (m)": params.get("esp_depth", "-"),
-                "Fluid Density (kg/m³)": params.get("density", "-"),
-                "Viscosity (cP)": params.get("viscosity", "-"),
-                "Tubing Roughness (mm)": params.get("roughness", "-"),
+                "Fluid Density (kg/m³)": params.get("rho", "-"),
+                "Viscosity (Pa.s)": params.get("mu", "-"),
+                "Tubing Roughness (m)": params.get("roughness", "-"),
             }
 
             # ----------------------------------------------------
@@ -2455,15 +2580,15 @@ elif selected_new == "Nodal Analysis Results":
             fig.savefig(plot_path, dpi=300, bbox_inches="tight")
 
             # ----------------------------------------------------
-            # Build summary text
+            # Build summary text (using safe strings)
             # ----------------------------------------------------
             main_analysis_text = f"""
             Nodal Analysis Summary
 
             Operating Point:
-            Flowrate (Q): {results['sol_flow']:.2f} m³/hr
-            Bottomhole Pressure (BHP): {results['sol_pbh']:.2f} bar
-            Pump Head: {results['sol_head']:.1f} m
+            Flowrate (Q): {sol_flow_str} m³/hr
+            Bottomhole Pressure (BHP): {sol_pbh_str} bar
+            Pump Head: {sol_head_str} m
 
             Extracted Parameters:
             Reservoir Pressure: {params.get('reservoir_pressure', '-')} bar
@@ -2484,9 +2609,9 @@ elif selected_new == "Nodal Analysis Results":
                 source_docs=source_docs,
                 filename=pdf_file,
                 user_query="Nodal Analysis Results",
-                operating_point=op_table,  # >>> ADDED <<<
-                parameter_dict=parameter_dict,  # >>> ADDED <<<
-                nodal_plot_path=plot_path  # >>> ADDED <<<
+                operating_point=op_table,
+                parameter_dict=parameter_dict,
+                nodal_plot_path=plot_path
             )
 
             st.success(f"📄 PDF saved: {pdf_file}")
@@ -2496,6 +2621,223 @@ elif selected_new == "Nodal Analysis Results":
 
         except Exception as e:
             st.error(f"Failed to generate or save PDF: {e}")
+# elif selected_new == "Nodal Analysis Results":
+#     import matplotlib.pyplot as plt
+#     import pandas as pd
+#     from datetime import datetime
+#     from pathlib import Path
+#
+#     st.subheader("⛽ Nodal Analysis Results (RAG-driven Agent Workflow)")
+#     st.markdown("---")
+#
+#     # 1. System Readiness Check
+#     if 'vectorstore' not in st.session_state or 'qa_chain' not in st.session_state:
+#         st.warning("Please upload and process a document in the 'Home' tab first to initialize the analysis system.")
+#         st.stop()
+#
+#     # 2. Retrieve docs for nodal analysis parameters
+#     parameter_query = "reservoir pressure, wellhead pressure, PI, ESP depth, density, viscosity, roughness, pump curve table, well trajectory table"
+#     source_docs = []
+#     try:
+#         retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 6})
+#         source_docs = retriever.invoke(parameter_query)
+#     except Exception as e:
+#         st.error(f"Error retrieving documents for analysis: {e}")
+#         source_docs = []
+#
+#     # 3–4. Extract + validate parameters
+#     params = get_parameters_from_rag(source_docs)
+#
+#     # 5. Compute nodal analysis
+#     # Rely on defaults defined globally if specific values weren't retrieved/extracted
+#     sol_flow, sol_pbh, sol_head, flows, p_vlp, p_ipr = run_nodal_analysis(
+#         params, flow_min=1.0, flow_max=400.0, n_points=200, tolerance_bar=3.0
+#     )
+#     results = {
+#         "sol_flow": sol_flow, "sol_pbh": sol_pbh, "sol_head": sol_head,
+#         "flows": flows, "p_vlp": p_vlp, "p_ipr": p_ipr
+#     }
+#
+#     # ----------------------------------------------------
+#     ## 📝 Results Summary Generation
+#     # ----------------------------------------------------
+#
+#     summary_text = "Analysis complete. Data points extracted and calculation performed."
+#
+#     if source_docs:
+#         summary_query = f"""
+#         Generate a concise, technical paragraph summary (5-8 sentences) for the Nodal Analysis.
+#         Use only the context provided by the retrieved sources (tables/text).
+#         Mention the key operating point found by the calculation: Q={results['sol_flow']:.2f} m³/hr, BHP={results['sol_pbh']:.2f} bar, Head={results['sol_head']:.1f} m (if available).
+#         Also, quote the most critical static parameter values from the source documents (e.g., Reservoir Pressure, PI, ESP Depth).
+#         """
+#         with st.spinner("Generating analytical summary from RAG context..."):
+#             try:
+#                 # FIX: Use the 'query' key for the RetrievalQA chain invocation
+#                 summary_response = st.session_state.qa_chain({"query": summary_query})
+#                 summary_text = summary_response['result']
+#             except Exception as e:
+#                 summary_text = f"Could not generate LLM summary: {e}. Showing default analysis text instead."
+#
+#     st.markdown("## 📊 Analysis Report & Summary")
+#     st.info(summary_text)
+#     st.markdown("---")
+#
+#     # ----------------------------------------------------
+#     ## 🔑 Key Operating Point
+#     # ----------------------------------------------------
+#     col_op, col_err = st.columns([2, 3])
+#     with col_op:
+#         st.markdown("### Operating Point")
+#         if results["sol_flow"]:
+#             st.success(
+#                 f"**Flowrate (Q):** {results['sol_flow']:.2f} m³/hr\n\n"
+#                 f"**Bottomhole Pressure (BHP):** {results['sol_pbh']:.2f} bar\n\n"
+#                 f"**Pump Head:** {results['sol_head']:.1f} m" if results['sol_head'] is not None else
+#                 f"**Bottomhole Pressure (BHP):** {results['sol_pbh']:.2f} bar"
+#             )
+#         else:
+#             st.error("❌ No stable operating point found within tolerance (±3.0 bar).")
+#
+#     with col_err:
+#         st.markdown("### Extracted Fluid & Well Data")
+#         st.metric("Reservoir Pressure", f"{params['reservoir_pressure']} bar")
+#         st.metric("Productivity Index (PI)", f"{params['PI']} m³/hr/bar")
+#         st.metric("ESP Depth", f"{params['esp_depth']} m")
+#
+#     st.markdown("---")
+#
+#     # ----------------------------------------------------
+#     ## ⚙️ Detailed Parameters & Trajectory
+#     # ----------------------------------------------------
+#     st.markdown("## ⚙️ Detailed Extracted Data")
+#
+#     col_pump, col_traj = st.columns(2)
+#
+#     with col_pump:
+#         st.markdown("**Pump Curve (Flow vs. Head)**")
+#         if "pump_curve" in params:
+#             pump_df = pd.DataFrame({
+#                 "Flow (m³/hr)": params["pump_curve"]["flow"],
+#                 "Head (m)": params["pump_curve"]["head"]
+#             })
+#             st.dataframe(pump_df, use_container_width=True)
+#         else:
+#             st.warning("Pump curve data missing.")
+#
+#     with col_traj:
+#         st.markdown("**Well Trajectory (MD, TVD, ID)**")
+#         if "trajectory" in params:
+#             traj_df = pd.DataFrame(params["trajectory"])
+#             st.dataframe(traj_df, use_container_width=True)
+#         else:
+#             st.warning("Trajectory data missing.")
+#
+#     st.markdown("---")
+#
+#     # ----------------------------------------------------
+#     ## 📈 Nodal Analysis Plot
+#     # ----------------------------------------------------
+#     st.markdown("## 📈 Nodal Analysis Plot")
+#     fig, ax = plt.subplots(figsize=(10, 6))
+#     ax.plot(results["flows"], results["p_vlp"], label="VLP (Vertical Lift Performance)", color='blue', linewidth=2)
+#     ax.plot(results["flows"], results["p_ipr"], label="IPR (Inflow Performance Relationship)", color='green',
+#             linewidth=2)
+#
+#     if results["sol_flow"]:
+#         ax.scatter(results["sol_flow"], results["sol_pbh"], color="red", s=100, zorder=5, label="Operating Point")
+#         ax.axvline(results["sol_flow"], color='red', linestyle='--', linewidth=0.5)
+#         ax.axhline(results["sol_pbh"], color='red', linestyle='--', linewidth=0.5)
+#
+#     ax.set_xlabel("Flowrate [m³/hr]", fontsize=12)
+#     ax.set_ylabel("Pressure [bar]", fontsize=12)
+#     ax.set_title("Nodal Analysis (IPR vs VLP)", fontsize=14)
+#     ax.legend(fontsize=10)
+#     ax.grid(True, linestyle=':', alpha=0.6)
+#     st.pyplot(fig)
+#
+#     st.markdown("---")
+#
+#     # ----------------------------------------------------
+#     ## 📑 Sources & Export
+#     # ----------------------------------------------------
+#
+#     render_sources(source_docs)
+#
+#     # 7. Export to PDF with proper formatting
+#     if st.button("Export Full Results to PDF"):
+#
+#         try:
+#             # ----------------------------------------------------
+#             # Build Operating Point Table
+#             # ----------------------------------------------------
+#             op_table = {
+#                 "Flowrate (m³/hr)": f"{results['sol_flow']:.2f}",
+#                 "Bottomhole Pressure (bar)": f"{results['sol_pbh']:.2f}",
+#                 "Pump Head (m)": f"{results['sol_head']:.1f}",
+#             }
+#
+#             # ----------------------------------------------------
+#             # Build Parameter Table (Automatic Dict Table Builder)
+#             # ----------------------------------------------------
+#             parameter_dict = {
+#                 "Reservoir Pressure (bar)": params.get("reservoir_pressure", "-"),
+#                 "Wellhead Pressure (bar)": params.get("wellhead_pressure", "-"),
+#                 "Productivity Index (m³/hr/bar)": params.get("PI", "-"),
+#                 "ESP Depth (m)": params.get("esp_depth", "-"),
+#                 "Fluid Density (kg/m³)": params.get("density", "-"),
+#                 "Viscosity (cP)": params.get("viscosity", "-"),
+#                 "Tubing Roughness (mm)": params.get("roughness", "-"),
+#             }
+#
+#             # ----------------------------------------------------
+#             # SAVE nodal plot image temporarily
+#             # ----------------------------------------------------
+#             plot_path = "temp_nodal_plot.png"
+#             fig.savefig(plot_path, dpi=300, bbox_inches="tight")
+#
+#             # ----------------------------------------------------
+#             # Build summary text
+#             # ----------------------------------------------------
+#             main_analysis_text = f"""
+#             Nodal Analysis Summary
+#
+#             Operating Point:
+#             Flowrate (Q): {results['sol_flow']:.2f} m³/hr
+#             Bottomhole Pressure (BHP): {results['sol_pbh']:.2f} bar
+#             Pump Head: {results['sol_head']:.1f} m
+#
+#             Extracted Parameters:
+#             Reservoir Pressure: {params.get('reservoir_pressure', '-')} bar
+#             PI: {params.get('PI', '-')} m³/hr/bar
+#             ESP Depth: {params.get('esp_depth', '-')} m
+#
+#             Full LLM Summary:
+#             {summary_text}
+#             """
+#
+#             # ----------------------------------------------------
+#             # CALL UPDATED PDF GENERATOR
+#             # ----------------------------------------------------
+#             pdf_file = f"nodal_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+#
+#             save_response_to_pdf(
+#                 answer_text=main_analysis_text,
+#                 source_docs=source_docs,
+#                 filename=pdf_file,
+#                 user_query="Nodal Analysis Results",
+#                 operating_point=op_table,  # >>> ADDED <<<
+#                 parameter_dict=parameter_dict,  # >>> ADDED <<<
+#                 nodal_plot_path=plot_path  # >>> ADDED <<<
+#             )
+#
+#             st.success(f"📄 PDF saved: {pdf_file}")
+#
+#             with open(pdf_file, "rb") as f:
+#                 st.download_button("⬇️ Download Results PDF", f, file_name=pdf_file, mime="application/pdf")
+#
+#         except Exception as e:
+#             st.error(f"Failed to generate or save PDF: {e}")
 
 # ----------------------------
 # Option 4: Vision Part
