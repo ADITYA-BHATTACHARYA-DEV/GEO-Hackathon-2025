@@ -128,14 +128,216 @@ from datetime import datetime
 from io import StringIO
 import pandas as pd
 import os
+#
+# def save_response_to_pdf(
+#     answer_text,
+#     source_docs,
+#     filename="output.pdf",
+#     user_query=None,
+#     operating_point=None,      # dict
+#     parameter_dict=None,       # dict
+#     nodal_plot_path=None
+# ):
+#     """
+#     SPE-style PDF generator:
+#       - Vertical SPE-style tables (Option A)
+#       - Dark-gray header, light-gray body
+#       - Nodal plot insertion
+#       - Full Unicode-safe text handling
+#       - Fixes FPDF crash: "'int' object has no attribute 'upper'"
+#     """
+#
+#     # -----------------------------
+#     # Imports
+#     # -----------------------------
+#     from fpdf import FPDF
+#     import os
+#     from datetime import datetime
+#
+#     # -----------------------------
+#     # Safe text conversion (CRITICAL)
+#     # -----------------------------
+#     def s(x):
+#         """Convert any object to safe string for FPDF."""
+#         try:
+#             if x is None:
+#                 return ""
+#             return str(x)
+#         except:
+#             return ""
+#
+#     # -----------------------------
+#     # Safe multicell wrapper
+#     # -----------------------------
+#     def _safe_multicell(pdf_obj, w, h, txt, max_len=3000):
+#         txt = s(txt)
+#         if len(txt) > max_len:
+#             txt = txt[:max_len] + "..."
+#         pdf_obj.multi_cell(w, h, txt)
+#
+#     # -----------------------------
+#     # Custom PDF class
+#     # -----------------------------
+#     class _PEFPDF(FPDF):
+#         def footer(self):
+#             self.set_y(-12)
+#             self.set_font("Arial", "I", 8)
+#             self.set_text_color(120, 120, 120)
+#             self.cell(0, 10, f"Page {self.page_no()}", align="C")
+#
+#     pdf = _PEFPDF()
+#     pdf.set_auto_page_break(auto=True, margin=15)
+#     pdf.add_page()
+#
+#     # -----------------------------
+#     # SPE Colors
+#     # -----------------------------
+#     HEADER_GRAY = (80, 80, 80)      # dark gray header
+#     BODY_GRAY = (235, 235, 235)     # light gray body
+#     TEXT_BLACK = (0, 0, 0)
+#
+#     # -----------------------------
+#     # Heading formatter
+#     # -----------------------------
+#     def draw_heading(title):
+#         pdf.ln(6)
+#         pdf.set_font("Arial", "B", 14)
+#         pdf.set_text_color(20, 20, 20)
+#         pdf.cell(0, 8, s(title), ln=True, align="L")
+#         pdf.ln(2)
+#         pdf.set_draw_color(150, 150, 150)
+#         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.l_margin, pdf.get_y())
+#         pdf.ln(4)
+#
+#     # -----------------------------
+#     # SPE-style vertical table
+#     # -----------------------------
+#     def draw_spe_vertical_table(title, data_dict):
+#         if not data_dict:
+#             return
+#
+#         pdf.ln(3)
+#
+#         # ----------------- Header row -----------------
+#         pdf.set_fill_color(*HEADER_GRAY)
+#         pdf.set_text_color(255, 255, 255)
+#         pdf.set_font("Arial", "B", 10)
+#         pdf.cell(0, 8, s(title), ln=True, align="C", fill=True)
+#
+#         # ----------------- Body rows -----------------
+#         pdf.set_fill_color(*BODY_GRAY)
+#         pdf.set_text_color(*TEXT_BLACK)
+#         pdf.set_font("Arial", "", 9)
+#
+#         col1_w = (pdf.w - pdf.l_margin - pdf.r_margin) * 0.40
+#         col2_w = (pdf.w - pdf.l_margin - pdf.r_margin) * 0.60
+#
+#         for key, val in data_dict.items():
+#             pdf.cell(col1_w, 7, s(key), border=1, fill=True)
+#             pdf.cell(col2_w, 7, s(val), border=1, fill=True, ln=1)
+#
+#         pdf.ln(4)
+#
+#     # -----------------------------
+#     # COVER PAGE
+#     # -----------------------------
+#     pdf.set_font("Arial", "B", 20)
+#     pdf.set_text_color(10, 60, 150)
+#     pdf.cell(0, 12, "Nodal Analysis - Engineering Report", ln=True)
+#
+#     pdf.ln(2)
+#     pdf.set_font("Arial", "", 10)
+#     pdf.set_text_color(*TEXT_BLACK)
+#     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#     pdf.cell(0, 6, s(f"Generated: {ts}"), ln=True)
+#
+#     if user_query:
+#         _safe_multicell(pdf, 0, 6, f"Query: {user_query}")
+#
+#     pdf.ln(4)
+#     pdf.set_draw_color(200, 200, 200)
+#     pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.l_margin, pdf.get_y())
+#     pdf.ln(8)
+#
+#     # -----------------------------
+#     # I. Summary
+#     # -----------------------------
+#     draw_heading("I. Summary of Solution")
+#     pdf.set_font("Arial", "", 11)
+#     _safe_multicell(pdf, 0, 5, answer_text)
+#     pdf.ln(6)
+#
+#     # -----------------------------
+#     # II. Operating Point (SPE table)
+#     # -----------------------------
+#     if operating_point:
+#         draw_heading("II. Operating Point")
+#         draw_spe_vertical_table("Operating Point", operating_point)
+#
+#     # -----------------------------
+#     # III. Extracted Parameters (SPE table)
+#     # -----------------------------
+#     if parameter_dict:
+#         draw_heading("III. Extracted Parameters")
+#         draw_spe_vertical_table("Extracted Parameters", parameter_dict)
+#
+#     # -----------------------------
+#     # IV. Insert Nodal Plot
+#     # -----------------------------
+#     if nodal_plot_path:
+#         draw_heading("IV. Nodal Plot")
+#         try:
+#             if os.path.exists(nodal_plot_path):
+#                 max_w = pdf.w - pdf.l_margin - pdf.r_margin
+#                 pdf.image(nodal_plot_path, x=pdf.l_margin, w=max_w)
+#                 pdf.ln(6)
+#             else:
+#                 pdf.set_text_color(180, 0, 0)
+#                 pdf.cell(0, 6, "Plot image not found.", ln=True)
+#                 pdf.set_text_color(*TEXT_BLACK)
+#         except Exception as e:
+#             pdf.set_text_color(180, 0, 0)
+#             _safe_multicell(pdf, 0, 5, f"[Could not load plot: {e}]")
+#             pdf.set_text_color(*TEXT_BLACK)
+#
+#     # -----------------------------
+#     # V. Supporting Sources
+#     # -----------------------------
+#     draw_heading("V. Supporting Sources")
+#
+#     for i, doc in enumerate(source_docs or [], start=1):
+#         meta = getattr(doc, "metadata", {}) or {}
+#
+#         pdf.set_fill_color(220, 220, 220)
+#         pdf.set_font("Arial", "B", 9)
+#         pdf.set_text_color(*TEXT_BLACK)
+#
+#         header_text = f"Source {i}: {meta.get('source','N/A')} | Page: {meta.get('page','N/A')}"
+#         pdf.cell(0, 7, s(header_text), ln=1, fill=True)
+#
+#         pdf.set_font("Arial", "", 8)
+#         preview = getattr(doc, "page_content", "")
+#         _safe_multicell(pdf, 0, 4, preview)
+#         pdf.ln(2)
+#
+#     # -----------------------------
+#     # Save Output
+#     # -----------------------------
+#     out_dir = os.path.dirname(filename)
+#     if out_dir and not os.path.exists(out_dir):
+#         os.makedirs(out_dir, exist_ok=True)
+#
+#     pdf.output(filename)
+#
+#     return filename
 
 def save_response_to_pdf(
     answer_text,
     source_docs,
     filename="output.pdf",
     user_query=None,
-    operating_point=None,      # dict
-    parameter_dict=None,       # dict
+    operating_point=None,
+    parameter_dict=None,
     nodal_plot_path=None
 ):
     """
@@ -144,7 +346,6 @@ def save_response_to_pdf(
       - Dark-gray header, light-gray body
       - Nodal plot insertion
       - Full Unicode-safe text handling
-      - Fixes FPDF crash: "'int' object has no attribute 'upper'"
     """
 
     # -----------------------------
@@ -155,7 +356,7 @@ def save_response_to_pdf(
     from datetime import datetime
 
     # -----------------------------
-    # Safe text conversion (CRITICAL)
+    # Safe text conversion
     # -----------------------------
     def s(x):
         """Convert any object to safe string for FPDF."""
@@ -181,7 +382,7 @@ def save_response_to_pdf(
     class _PEFPDF(FPDF):
         def footer(self):
             self.set_y(-12)
-            self.set_font("Arial", "I", 8)
+            self.set_font("DejaVu", "I", 8)
             self.set_text_color(120, 120, 120)
             self.cell(0, 10, f"Page {self.page_no()}", align="C")
 
@@ -190,10 +391,18 @@ def save_response_to_pdf(
     pdf.add_page()
 
     # -----------------------------
+    # FIX: Unicode font support
+    # -----------------------------
+    pdf.add_font("DejaVu", "", "assets/fonts/DejaVuSans.ttf", uni=True)
+    pdf.add_font("DejaVu", "B", "assets/fonts/DejaVuSans.ttf", uni=True)
+    pdf.add_font("DejaVu", "I", "assets/fonts/DejaVuSans.ttf", uni=True)
+    pdf.set_font("DejaVu", "", 12)
+
+    # -----------------------------
     # SPE Colors
     # -----------------------------
-    HEADER_GRAY = (80, 80, 80)      # dark gray header
-    BODY_GRAY = (235, 235, 235)     # light gray body
+    HEADER_GRAY = (80, 80, 80)
+    BODY_GRAY = (235, 235, 235)
     TEXT_BLACK = (0, 0, 0)
 
     # -----------------------------
@@ -201,7 +410,7 @@ def save_response_to_pdf(
     # -----------------------------
     def draw_heading(title):
         pdf.ln(6)
-        pdf.set_font("Arial", "B", 14)
+        pdf.set_font("DejaVu", "B", 14)
         pdf.set_text_color(20, 20, 20)
         pdf.cell(0, 8, s(title), ln=True, align="L")
         pdf.ln(2)
@@ -218,16 +427,16 @@ def save_response_to_pdf(
 
         pdf.ln(3)
 
-        # ----------------- Header row -----------------
+        # Header row
         pdf.set_fill_color(*HEADER_GRAY)
         pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", "B", 10)
+        pdf.set_font("DejaVu", "B", 10)
         pdf.cell(0, 8, s(title), ln=True, align="C", fill=True)
 
-        # ----------------- Body rows -----------------
+        # Body rows
         pdf.set_fill_color(*BODY_GRAY)
         pdf.set_text_color(*TEXT_BLACK)
-        pdf.set_font("Arial", "", 9)
+        pdf.set_font("DejaVu", "", 9)
 
         col1_w = (pdf.w - pdf.l_margin - pdf.r_margin) * 0.40
         col2_w = (pdf.w - pdf.l_margin - pdf.r_margin) * 0.60
@@ -241,12 +450,12 @@ def save_response_to_pdf(
     # -----------------------------
     # COVER PAGE
     # -----------------------------
-    pdf.set_font("Arial", "B", 20)
+    pdf.set_font("DejaVu", "B", 20)
     pdf.set_text_color(10, 60, 150)
     pdf.cell(0, 12, "Nodal Analysis - Engineering Report", ln=True)
 
     pdf.ln(2)
-    pdf.set_font("Arial", "", 10)
+    pdf.set_font("DejaVu", "", 10)
     pdf.set_text_color(*TEXT_BLACK)
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     pdf.cell(0, 6, s(f"Generated: {ts}"), ln=True)
@@ -263,26 +472,26 @@ def save_response_to_pdf(
     # I. Summary
     # -----------------------------
     draw_heading("I. Summary of Solution")
-    pdf.set_font("Arial", "", 11)
+    pdf.set_font("DejaVu", "", 11)
     _safe_multicell(pdf, 0, 5, answer_text)
     pdf.ln(6)
 
     # -----------------------------
-    # II. Operating Point (SPE table)
+    # II. Operating Point
     # -----------------------------
     if operating_point:
         draw_heading("II. Operating Point")
         draw_spe_vertical_table("Operating Point", operating_point)
 
     # -----------------------------
-    # III. Extracted Parameters (SPE table)
+    # III. Extracted Parameters
     # -----------------------------
     if parameter_dict:
         draw_heading("III. Extracted Parameters")
         draw_spe_vertical_table("Extracted Parameters", parameter_dict)
 
     # -----------------------------
-    # IV. Insert Nodal Plot
+    # IV. Nodal Plot
     # -----------------------------
     if nodal_plot_path:
         draw_heading("IV. Nodal Plot")
@@ -309,13 +518,13 @@ def save_response_to_pdf(
         meta = getattr(doc, "metadata", {}) or {}
 
         pdf.set_fill_color(220, 220, 220)
-        pdf.set_font("Arial", "B", 9)
+        pdf.set_font("DejaVu", "B", 9)
         pdf.set_text_color(*TEXT_BLACK)
 
         header_text = f"Source {i}: {meta.get('source','N/A')} | Page: {meta.get('page','N/A')}"
         pdf.cell(0, 7, s(header_text), ln=1, fill=True)
 
-        pdf.set_font("Arial", "", 8)
+        pdf.set_font("DejaVu", "", 8)
         preview = getattr(doc, "page_content", "")
         _safe_multicell(pdf, 0, 4, preview)
         pdf.ln(2)
@@ -330,7 +539,6 @@ def save_response_to_pdf(
     pdf.output(filename)
 
     return filename
-
 
 
 
