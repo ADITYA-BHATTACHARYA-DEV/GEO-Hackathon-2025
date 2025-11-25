@@ -38,6 +38,378 @@ from langchain_community.llms import Ollama
 # Document loaders with defensive imports
 from langchain_community.document_loaders import PyPDFLoader
 
+st.markdown("""
+<style>
+    /* =====================================================
+       1. THEME CONFIGURATION (EDIT THIS SECTION ONLY)
+       Change colors here to instantly re-theme the app.
+    ======================================================*/
+    :root {
+        /* Primary Colors */
+        --primary-color: #00d4ff;       /* Bright Neon Blue */
+        --secondary-color: #0066ff;     /* Deep Blue */
+        --accent-color: #00e5ff;        /* Cyan Highlight */
+
+        /* Text Colors */
+        --text-main: #e0f2ff;           /* Very light blue-white */
+        --text-header: #ffffff;         /* Pure White */
+        --text-muted: #94a3b8;          /* Muted Blue-Grey */
+
+        /* Backgrounds */
+        --bg-dark: #0a0f1e;             /* Deepest Background */
+        --bg-panel: rgba(255, 255, 255, 0.05); /* Glass Effect */
+        --sidebar-bg: #0f172a;          /* Dark Sidebar */
+
+        /* Effects */
+        --glow-strength: 0px 0px 12px;  /* Standard Glow */
+        --border-radius: 12px;          /* Rounded Corners */
+        --transition-speed: 0.3s;       /* Animation Speed */
+    }
+
+    /* =====================================================
+       2. GLOBAL RESET & TYPOGRAPHY
+    ======================================================*/
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+        color: var(--text-main) !important;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--text-header) !important;
+        text-shadow: var(--glow-strength) var(--secondary-color);
+        font-weight: 700 !important;
+    }
+
+    /* Fix Input Labels */
+    label, .stTextInput > label, .stSelectbox > label {
+        color: var(--text-header) !important;
+        font-weight: 600;
+    }
+
+    /* =====================================================
+       3. ANIMATED BACKGROUND (Particle Mesh)
+    ======================================================*/
+    .stApp {
+        background: radial-gradient(circle at 50% 0%, #1e293b 0%, var(--bg-dark) 80%) !important;
+    }
+
+    /* Floating Grid Effect */
+    .stApp::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background-image: 
+            linear-gradient(rgba(0, 212, 255, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 212, 255, 0.05) 1px, transparent 1px);
+        background-size: 40px 40px;
+        opacity: 0.3;
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    /* =====================================================
+       4. COMPONENTS: CARDS & CONTAINERS
+    ======================================================*/
+    .metric-card {
+        background: var(--bg-panel);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: var(--border-radius);
+        padding: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+    }
+
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 0 25px rgba(0, 212, 255, 0.4);
+        border-color: var(--primary-color);
+    }
+
+    /* ===============================
+   SIDEBAR GLOWING RAINBOW DIVIDER
+   WITH FLOWING PARTICLES
+===============================*/
+[data-testid="stSidebar"] {
+    position: relative; /* ensure pseudo elements align */
+    overflow: visible;
+}
+
+/* Main glowing line */
+[data-testid="stSidebar"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: -1px;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(
+        180deg,
+        red, orange, yellow, green, cyan, blue, violet, red
+    );
+    background-size: 100% 800%;
+    border-radius: 2px;
+    box-shadow:
+        0 0 15px rgba(255,0,150,0.8),
+        0 0 25px rgba(0,200,255,0.7),
+        0 0 35px rgba(255,255,0,0.5);
+    animation: rainbowGlow 6s linear infinite;
+    z-index: 999;
+}
+
+/* Flowing particles along the line */
+[data-testid="stSidebar"]::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0px;
+    width: 4px;
+    height: 100%;
+    background: radial-gradient(circle, rgba(255,255,255,0.9) 2px, transparent 2px);
+    background-size: 100% 20px;
+    animation: particlesFlow 2s linear infinite;
+    z-index: 1000;
+}
+
+/* Rainbow gradient animation */
+@keyframes rainbowGlow {
+    0% { background-position: 0% 0%; }
+    50% { background-position: 0% 100%; }
+    100% { background-position: 0% 0%; }
+}
+
+/* Particles flow animation */
+@keyframes particlesFlow {
+    0% { background-position: 0 0; opacity: 0.7; }
+    50% { background-position: 0 50%; opacity: 1; }
+    100% { background-position: 0 100%; opacity: 0.7; }
+}
+
+
+    /* =====================================================
+       6. INTERACTIVE ELEMENTS (Buttons & Inputs)
+    ======================================================*/
+    /* Primary Buttons */
+    .stButton > button {
+        background: linear-gradient(135deg, var(--secondary-color), var(--primary-color)) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.5px;
+        transition: all var(--transition-speed);
+    }
+
+    .stButton > button:hover {
+        opacity: 0.9;
+        transform: scale(1.02);
+        box-shadow: 0 0 15px var(--primary-color);
+    }
+
+    /* Input Fields */
+    .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        color: white !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 8px !important;
+    }
+
+    /* Input Focus State */
+    .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus-within {
+        border-color: var(--primary-color) !important;
+        box-shadow: 0 0 10px rgba(0, 212, 255, 0.2) !important;
+    }
+
+    /* =====================================================
+       7. CHAT INTERFACE
+    ======================================================*/
+    .stChatMessage {
+        background: rgba(255, 255, 255, 0.03) !important;
+        border-left: 3px solid var(--secondary-color) !important;
+        border-radius: 0 12px 12px 0 !important;
+    }
+
+    /* User Message Distinction */
+    .stChatMessage[data-testid="user-message"] {
+        background: rgba(0, 212, 255, 0.05) !important;
+        border-left: 3px solid var(--primary-color) !important;
+    }
+
+    /* =====================================================
+       8. UTILITY: SCROLLBARS & ALERTS
+    ======================================================*/
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: var(--bg-dark); 
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #334155; 
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--secondary-color); 
+    }
+
+    /* Alerts */
+    .stAlert {
+        background: rgba(0, 0, 0, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+    }
+
+</style>
+""", unsafe_allow_html=True)
+
+# st.markdown("""
+# <style>
+#
+#     /* =====================================================
+#        GLOBAL TEXT FIX — FULL OVERRIDE (NO WHITE TEXT EVER)
+#     ======================================================*/
+#     html, body, div, span, p, h1, h2, h3, h4, h5, h6,
+#     [class*="css"], .stMarkdown p, .stChatMessage *,
+#     label, input, textarea, .stTextInput input {
+#         color: #e2e8f0 !important; /* Soft neon text */
+#     }
+#
+#     /* Headings (neon glow) */
+#     h1, h2, h3, h4 {
+#         color: #a5b4ff !important;
+#         text-shadow: 0 0 10px #6366f1;
+#     }
+#
+#     /* =====================================================
+#        DARK NEON BACKGROUND + MOVING PARTICLES
+#     ======================================================*/
+#
+#     .stApp {
+#         background: #0d0e1a !important; /* fallback */
+#     }
+#
+#     /* Particle container */
+#     body::before {
+#         content: "";
+#         position: fixed;
+#         top: 0; left: 0;
+#         width: 100%; height: 100%;
+#         background:
+#             radial-gradient(circle, rgba(99,102,241,0.4) 2px, transparent 2px) 0 0,
+#             radial-gradient(circle, rgba(168,85,247,0.35) 2px, transparent 2px) 50px 50px,
+#             radial-gradient(circle, rgba(34,211,238,0.35) 2px, transparent 2px) 120px 80px,
+#             radial-gradient(circle, rgba(16,185,129,0.35) 2px, transparent 2px) 200px 20px;
+#         background-size: 200px 200px;
+#         animation: particleMove 18s linear infinite;
+#         z-index: -1;
+#         opacity: 0.25;
+#     }
+#
+#     @keyframes particleMove {
+#         from { transform: translateY(0px); }
+#         to   { transform: translateY(-200px); }
+#     }
+#
+#     /* =====================================================
+#        SIDEBAR — DARK + NEON GLOW
+#     ======================================================*/
+#     [data-testid="stSidebar"] {
+#         background: linear-gradient(180deg, #0f0f1c, #111325, #121629) !important;
+#         border-right: 1px solid #3b3b92 !important;
+#         box-shadow: 0 0 25px rgba(88,28,135,0.45);
+#     }
+#
+#     [data-testid="stSidebar"] * {
+#         color: #c7d2fe !important;
+#     }
+#
+#     /* Sidebar hover links */
+#     .css-1d391kg:hover {
+#         color: #8b5cf6 !important;
+#         text-shadow: 0 0 8px #8b5cf6;
+#         transform: translateX(4px);
+#         transition: 0.2s ease;
+#     }
+#
+#     /* =====================================================
+#        CARD STYLE — NEON EDGES
+#     ======================================================*/
+#     .metric-card {
+#         background: rgba(255,255,255,0.03) !important;
+#         padding: 25px;
+#         border-radius: 16px;
+#         border: 1px solid rgba(99,102,241,0.4);
+#         box-shadow: 0 0 20px rgba(99,102,241,0.2);
+#         transition: 0.2s ease;
+#     }
+#
+#     .metric-card:hover {
+#         transform: translateY(-6px);
+#         box-shadow: 0 0 35px rgba(168,85,247,0.45);
+#     }
+#
+#     /* =====================================================
+#        BUTTONS — ELECTRIC NEON
+#     ======================================================*/
+#     .stButton>button {
+#         background: linear-gradient(90deg, #4f46e5, #7c3aed) !important;
+#         color: white !important;
+#         border: none !important;
+#         padding: 0.7rem 1.4rem !important;
+#         font-weight: 600 !important;
+#         border-radius: 12px !important;
+#         box-shadow: 0 0 15px rgba(147,51,234,0.4);
+#         transition: 0.2s ease;
+#     }
+#
+#     .stButton>button:hover {
+#         transform: translateY(-3px);
+#         box-shadow: 0 0 30px rgba(99,102,241,0.7);
+#     }
+#
+#     /* Reset button */
+#     .css-1x8cf1d {
+#         background: #2a1a1a !important;
+#         color: #f87171 !important;
+#         border: 1px solid #f87171 !important;
+#         border-radius: 10px !important;
+#     }
+#
+#     .css-1x8cf1d:hover {
+#         background: #3f1f1f !important;
+#     }
+#
+#     /* =====================================================
+#        CHAT BUBBLES — DARK GLASS
+#     ======================================================*/
+#     .stChatMessage {
+#         background: rgba(255,255,255,0.05) !important;
+#         border: 1px solid rgba(147,51,234,0.35);
+#         border-radius: 16px !important;
+#         padding: 12px 18px !important;
+#         box-shadow: 0 0 15px rgba(147,51,234,0.2);
+#     }
+#
+#     .stChatMessage p {
+#         color: #e5e7eb !important;
+#     }
+#
+#     /* =====================================================
+#        ALERTS — NEON LEFT BAR
+#     ======================================================*/
+#     .stAlert {
+#         background: rgba(255,255,255,0.05) !important;
+#         border-radius: 12px !important;
+#         border-left: 6px solid #4f46e5 !important;
+#         color: #e2e8f0 !important;
+#         padding: 10px 18px !important;
+#     }
+#
+# </style>
+# """, unsafe_allow_html=True)
+
 st.header("LocoChat - Document insights across text, tables, and figures")
 import uuid  # <--- Add this import
 # ... existing imports ...
